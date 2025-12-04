@@ -1412,7 +1412,7 @@ class DifferentialEvolution(DifferentialEvolutionBase):
                             for j in range(self.num_islands)]
 
         # Set all fitnesses to Inf, guaranteeing a replacement by the first proposed individual
-        self.fitnesses = [[np.Inf
+        self.fitnesses = [[np.inf
                            for i in range(self.num_per_island)]
                           for j in range(self.num_islands)]
 
@@ -1602,7 +1602,7 @@ class AsynchronousDifferentialEvolution(DifferentialEvolutionBase):
 
         # Set all fitnesses to Inf, guaranteeing a replacement by the first proposed individual.
         # The first replacement will replace with a copy of the same PSet, with the correct objective calculated.
-        self.fitnesses = [np.Inf for i in range(self.population_size)]
+        self.fitnesses = [np.inf for i in range(self.population_size)]
 
         for i in range(len(self.individuals)):
             self.individuals[i].name = 'gen0ind%i' % i
