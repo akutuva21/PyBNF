@@ -34,6 +34,7 @@ Required Keys
     * ``sa`` - :ref:`Simulated Annealing (Not recommended) <alg-sa>`
     * ``pt`` - :ref:`Parallel tempering (Not recommended) <alg-pt>`
     * ``am`` - :ref:`Adaptive MCMC <alg-am>`
+    * ``dream`` - :ref:`DREAM <alg-dream>`
     * ``check`` - Run :ref:`model checking <model_check>` instead of fitting
 
 
@@ -795,7 +796,7 @@ A variant of particle swarm that adaptively changes the ``particle_weight`` over
 :ref:`Bayesian Algorithms (mh, pt, sa) <alg-mcmc>`
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-In the family of Bayesian algoritms with Metropolis sampling, PyBNF includes :ref:`Metropolis-Hastings MCMC <alg-mcmc>` (``fit_type = mh``), :ref:`Parallel Tempering <alg-pt>` (``fit_type = pt``), and :ref:`Simulated Annealing <alg-sa>` (``fit_type = sa``). These algorithms have many configuration keys in common, as described below. 
+In the family of Bayesian algoritms with Metropolis sampling, PyBNF includes :ref:`Metropolis-Hastings MCMC <alg-mcmc>` (``fit_type = mh``), :ref:`Parallel Tempering <alg-pt>` (``fit_type = pt``), :ref:`Simulated Annealing <alg-sa>` (``fit_type = sa``), and :ref:`DREAM <alg-dream>` (``fit_type = dream``). These algorithms have many configuration keys in common, as described below. 
 
 
 For all Bayesian algorithms
@@ -1002,18 +1003,22 @@ For Adaptive MCMC
   Example: 
   
     * ``starting_params = 5.5 2 3``     
-.. For DREAM
-.. """""""""
+For DREAM
+"""""""""
 
-.. step_size: As in Bayesian settings, but here it can be set to 'auto' (Not implemented)
-.. ``crossover_number = int``
-..   The number of distinct crossover probabilities for performing Gibbs sampling on the parameter set.  Random numbers are generated for each parameter and if they are less than the sampled crossover probability, then a new value is calculated in the updated PSet. Default: 3
-.. ``zeta = float``
-..   A (very) small number for perturbing the calculated update for a particular parameter (applies to all parameters).  Default: 1e-6
-.. ``lambda = float``
-..   A small number for perturbing parameters selected by the crossover procedure.  Default: 0.1
-.. ``gamma_prob = float``
-..   A probability that determines how often a jump in parameter space is assigned a value of 1 instead of ``step_size``.  Helps with jumping to the mode of the distribution.  Default: 0.1
+step_size: As in Bayesian settings, but here it can be set to 'auto' (Not implemented)
+
+``crossover_number = int``
+  The number of distinct crossover probabilities for performing Gibbs sampling on the parameter set.  Random numbers are generated for each parameter and if they are less than the sampled crossover probability, then a new value is calculated in the updated PSet. Default: 3
+
+``zeta = float``
+  A (very) small number for perturbing the calculated update for a particular parameter (applies to all parameters).  Default: 1e-6
+
+``lambda = float``
+  A small number for perturbing parameters selected by the crossover procedure.  Default: 0.1
+
+``gamma_prob = float``
+  A probability that determines how often a jump in parameter space is assigned a value of 1 instead of ``step_size``.  Helps with jumping to the mode of the distribution.  Default: 0.1
 
 
 
