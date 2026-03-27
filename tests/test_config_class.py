@@ -106,6 +106,39 @@ class TestConfig(object):
                                   'normalization': {'bngl_files/p1_5.exp': [('init', [2])],
                                                     'bngl_files/thing.exp': [('peak', ['Ag_total'])]}})
 
+    def test_load_t_length_xml_integer_step(self):
+        """_load_t_length should handle integer step strings for XML models"""
+        c = object.__new__(config.Configuration)
+        c.config = {
+            'models': {'model.xml'},
+            'time_course': [{'suffix': 'tc', 'step': '10'}],
+            'fit_type': 'de',
+        }
+        result = c._load_t_length()
+        assert result == {'tc': 10}
+
+    def test_load_t_length_xml_float_step(self):
+        """_load_t_length should handle float step strings for XML models (#314)"""
+        c = object.__new__(config.Configuration)
+        c.config = {
+            'models': {'model.xml'},
+            'time_course': [{'suffix': 'tc', 'step': '0.1'}],
+            'fit_type': 'de',
+        }
+        result = c._load_t_length()
+        assert result == {'tc': 0}
+
+    def test_load_t_length_xml_default_step(self):
+        """_load_t_length should default to step=1 when step is not specified"""
+        c = object.__new__(config.Configuration)
+        c.config = {
+            'models': {'model.xml'},
+            'time_course': [{'suffix': 'tc'}],
+            'fit_type': 'de',
+        }
+        result = c._load_t_length()
+        assert result == {'tc': 1}
+
     @raises(config.UnspecifiedConfigurationKeyError)
     def test_bad_config_init(self):
         config.Configuration(dict())

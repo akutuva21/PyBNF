@@ -374,7 +374,7 @@ class Configuration(object):
                     time = self.config['time_course'][0]['step']  
                 except KeyError:
                     time = 1      
-                timeDict[suffix] = int(time)  
+                timeDict[suffix] = int(float(time))
         return timeDict    
         
                 
