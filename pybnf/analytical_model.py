@@ -12,6 +12,7 @@ Supported target types:
 import copy
 import json
 import logging
+import time
 import numpy as np
 from os.path import splitext, basename
 
@@ -74,6 +75,8 @@ class AnalyticalModel(Model):
 
     def execute(self, folder, filename, timeout):
         """Compute the NLL score from the current parameter set."""
+        # Small delay to prevent dask race condition with instant-completion tasks
+        time.sleep(0.01)
         params = self._get_param_values()
         score = self._compute_nll(params)
 
