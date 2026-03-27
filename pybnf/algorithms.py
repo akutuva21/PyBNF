@@ -2046,7 +2046,7 @@ class DreamAlgorithm(BayesianAlgorithm):
     def __init__(self, config):
         super(DreamAlgorithm, self).__init__(config)
         self.n_dim = len(self.variables)
-        self.all_idcs = np.arange(self.n_dim)
+        self.all_idcs = np.arange(self.num_parallel)
         self.ncr = [(1+x)/self.config.config['crossover_number'] for x in range(self.config.config['crossover_number'])]
         self.g_prob = self.config.config['gamma_prob']
         self.acceptances = [0]*self.num_parallel
