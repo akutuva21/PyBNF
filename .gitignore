@@ -23,6 +23,10 @@ noseoutput2/
 tests/noseoutput2/
 tests/sim_1_rerun1/
 
+# Full test run outputs
+tests/full_tests/*/fit/
+tests/full_tests/*.log
+
 # Local scratch
 environment*.yml
 full-environment.yml
