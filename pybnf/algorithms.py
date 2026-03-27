@@ -586,7 +586,7 @@ class Algorithm(object):
                     print0("Network generation took too long.  Increase 'wall_time_gen' configuration parameter")
                     exit(1)
                 except:
-                    tb = ''.join(traceback.format_list(traceback.extract_tb(sys.exc_info())))
+                    tb = traceback.format_exc()
                     logger.debug("Other exception occurred:\n%s" % tb)
                     print0("Unknown error occurred during network generation, see log... exiting")
                     exit(1)
