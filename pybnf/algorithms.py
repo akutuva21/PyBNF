@@ -1991,6 +1991,10 @@ class BayesianAlgorithm(Algorithm):
         dat_array = np.genfromtxt(self.samples_file, delimiter='\t', dtype=float,
                                   usecols=range(2, len(self.variables)+2))
 
+        if dat_array.ndim < 2 or dat_array.shape[0] == 0:
+            logger.warning('No samples collected — skipping histogram generation')
+            return
+
         # Open the file(s) to save the credible intervals
         cred_files = []
         for i in self.credible_intervals:
@@ -2243,6 +2247,11 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
 
             print2('Statistical samples will be recorded every %i iterations, after an initial %i-iteration burn-in period'
                    % (self.sample_every, self.burn_in))
+            if self.max_iterations <= self.burn_in:
+                raise PybnfError(
+                    'max_iterations (%i) must be greater than burn_in (%i), '
+                    'otherwise no samples will be collected.'
+                    % (self.max_iterations, self.burn_in))
 
         setup_samples = not self.sa
         return super(BasicBayesMCMCAlgorithm, self).start_run(setup_samples=setup_samples)
