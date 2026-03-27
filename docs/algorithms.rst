@@ -302,6 +302,9 @@ Note: as stated in the Metropolis-Hastings description if a uniform or logunifor
 DREAM
 -----
 
+.. note::
+   DREAM has been validated on simple test cases but has not undergone extensive benchmarking. Users should verify results independently for their specific models. For most use cases, :ref:`Adaptive MCMC <alg-am>` is recommended.
+
 Algorithm
 ^^^^^^^^^
 **D**\ iffe\ **R**\ ential **E**\ volution **A**\ daptive **M**\ etropolis (DREAM), described in [Vrugt2016]_, is an
