@@ -2079,6 +2079,13 @@ class DreamAlgorithm(BayesianAlgorithm):
         self.snooker_prob = config.config['snooker_prob']
         self.gen_log_snooker_correction = [0.0] * self.num_parallel
 
+        # Multiple chain pairs
+        self.delta = config.config['delta']
+
+        # Outlier detection method and convergence threshold
+        self.outlier_method = config.config['outlier_method']
+        self.rhat_threshold = config.config['rhat_threshold']
+
     def start_run(self, setup_samples=True):
         first_psets = super().start_run(setup_samples)
         # Initialize the ZS archive with m0 random draws from the prior
@@ -2154,37 +2161,109 @@ class DreamAlgorithm(BayesianAlgorithm):
 
         return PSet(new_vars), log_correction
 
+    @staticmethod
+    def _split_chain_rhat(chains):
+        """
+        Compute the Brooks-Gelman R-hat from an array of chains.
+        chains: (N, n, d) array
+        Returns: (d,) array of R-hat values
+        """
+        N, n, d = chains.shape
+        mu_chains = np.mean(chains, axis=1)
+        s2_chains = np.var(chains, axis=1, ddof=1)
+        B = n * np.var(mu_chains, axis=0, ddof=1)
+        W = np.mean(s2_chains, axis=0)
+        sigma2 = ((n - 1) / n) * W + (1.0 / n) * B
+        with np.errstate(divide='ignore', invalid='ignore'):
+            return np.sqrt((N + 1) / N * (sigma2 / W) - (n - 1) / (N * n))
+
     def compute_rhat(self):
         """
-        Compute univariate Gelman-Rubin R-hat for each parameter using the last 50% of chain history.
+        Compute rank-normalized split-R-hat for each parameter (Vehtari, Gelman, Simpson,
+        Carpenter & Burkner, 2021, Bayesian Analysis).
+
+        Steps:
+        1. Split each chain in half (doubles the number of chains, catches within-chain non-stationarity)
+        2. Rank-normalize across all split chains (replaces values with normal scores of their ranks)
+        3. Compute R-hat on both the ranked values and folded ranked values (detects scale differences)
+        4. Return the element-wise maximum
+
         Returns a numpy array of shape (n_dim,) or None if insufficient data.
         """
         min_len = min(len(h) for h in self.chain_history)
-        if min_len < 10:
+        if min_len < 20:
             return None
 
+        # Use last 50% of each chain, then split each half in two
         start = min_len // 2
-        n = min_len - start
-        N = self.num_parallel
+        usable = min_len - start
+        half = usable // 2
+        if half < 5:
+            return None
 
-        chains = np.array([self.chain_history[j][start:min_len] for j in range(N)])  # (N, n, n_dim)
-        mu_chains = np.mean(chains, axis=1)  # (N, n_dim)
-        s2_chains = np.var(chains, axis=1, ddof=1)  # (N, n_dim)
+        # Split chains: N chains -> 2N chains of length half
+        split_chains = []
+        for j in range(self.num_parallel):
+            chunk = self.chain_history[j][start:start + 2 * half]
+            split_chains.append(chunk[:half])
+            split_chains.append(chunk[half:2 * half])
+        chains = np.array(split_chains)  # (2N, half, n_dim)
 
-        B = n * np.var(mu_chains, axis=0, ddof=1)  # (n_dim,)
-        W = np.mean(s2_chains, axis=0)  # (n_dim,)
+        N_split, n, d = chains.shape
 
-        sigma2 = ((n - 1) / n) * W + (1.0 / n) * B
+        # Rank-normalize each parameter across all split chains
+        ranked = np.empty_like(chains)
+        for p in range(d):
+            flat = chains[:, :, p].ravel()
+            order = flat.argsort()
+            ranks = np.empty_like(order, dtype=float)
+            ranks[order] = np.arange(1, len(flat) + 1)
+            # Transform ranks to normal scores: Phi^{-1}((rank - 3/8) / (S + 1/4))
+            z_scores = stats.norm.ppf((ranks - 0.375) / (len(flat) + 0.25))
+            ranked[:, :, p] = z_scores.reshape(N_split, n)
 
-        with np.errstate(divide='ignore', invalid='ignore'):
-            rhat = np.sqrt((N + 1) / N * (sigma2 / W) - (n - 1) / (N * n))
+        # R-hat on ranked values (detects location differences)
+        rhat_rank = self._split_chain_rhat(ranked)
 
-        return rhat
+        # Folded R-hat: fold around the median to detect scale differences
+        folded = np.abs(ranked - np.median(ranked, axis=(0, 1), keepdims=True))
+        rhat_fold = self._split_chain_rhat(folded)
+
+        # Return the element-wise max
+        with np.errstate(invalid='ignore'):
+            return np.fmax(rhat_rank, rhat_fold)
+
+    def _detect_outliers_iqr(self, mean_ln_p):
+        """IQR outlier detection: chains below Q25 - 2*IQR are outliers."""
+        Q75 = np.percentile(mean_ln_p, 75)
+        Q25 = np.percentile(mean_ln_p, 25)
+        iqr = Q75 - Q25
+        return np.where(mean_ln_p < Q25 - 2.0 * iqr)[0]
+
+    def _detect_outliers_grubbs(self, mean_ln_p):
+        """Grubbs test for a single minimum outlier at significance alpha=0.01."""
+        N = len(mean_ln_p)
+        if N < 3:
+            return np.array([], dtype=int)
+        mu = np.mean(mean_ln_p)
+        sd = np.std(mean_ln_p, ddof=1)
+        if sd < 1e-20:
+            return np.array([], dtype=int)
+        G = (mu - np.min(mean_ln_p)) / sd
+        alpha = 0.01
+        t_crit_sq = stats.t.ppf(alpha / (2 * N), N - 2) ** 2
+        T_c = (N - 1) / np.sqrt(N) * np.sqrt(t_crit_sq / (N - 2 + t_crit_sq))
+        if G > T_c:
+            return np.array([np.argmin(mean_ln_p)])
+        return np.array([], dtype=int)
 
     def detect_and_reset_outliers(self):
         """
-        Detect outlier chains using IQR on mean log-posteriors (last 50% of history).
-        Reset outlier chains to copies of randomly selected non-outlier chains.
+        Detect outlier chains using the configured method on mean log-posteriors
+        (last 50% of history). Reset outlier chains to copies of randomly selected
+        non-outlier chains.
+
+        Methods: 'iqr' (interquartile range), 'grubbs' (Grubbs test at alpha=0.01).
         """
         min_len = min(len(h) for h in self.ln_posterior_history)
         start = min_len // 2
@@ -2195,12 +2274,11 @@ class DreamAlgorithm(BayesianAlgorithm):
             np.mean(self.ln_posterior_history[j][start:min_len]) for j in range(self.num_parallel)
         ])
 
-        Q75 = np.percentile(mean_ln_p, 75)
-        Q25 = np.percentile(mean_ln_p, 25)
-        iqr = Q75 - Q25
-        threshold = Q25 - 2.0 * iqr
+        if self.outlier_method == 'grubbs':
+            outlier_indices = self._detect_outliers_grubbs(mean_ln_p)
+        else:
+            outlier_indices = self._detect_outliers_iqr(mean_ln_p)
 
-        outlier_indices = np.where(mean_ln_p < threshold)[0]
         if len(outlier_indices) == 0:
             return
 
@@ -2210,8 +2288,8 @@ class DreamAlgorithm(BayesianAlgorithm):
 
         for out_idx in outlier_indices:
             donor_idx = np.random.choice(good_indices)
-            logger.warning('Outlier chain %d reset to chain %d at iteration %d'
-                           % (out_idx, donor_idx, self.iteration[out_idx]))
+            logger.warning('Outlier chain %d reset to chain %d at iteration %d (method=%s)'
+                           % (out_idx, donor_idx, self.iteration[out_idx], self.outlier_method))
             self.current_pset[out_idx] = copy.deepcopy(self.current_pset[donor_idx])
             self.ln_current_P[out_idx] = self.ln_current_P[donor_idx]
             self.ln_posterior_history[out_idx][start:min_len] = self.ln_posterior_history[donor_idx][start:min_len]
@@ -2286,9 +2364,18 @@ class DreamAlgorithm(BayesianAlgorithm):
                 print2('Acceptance rates: %s\n' % str(self.acceptance_rates))
                 rhat = self.compute_rhat()
                 if rhat is not None:
-                    print1('Max R-hat: %.4f' % np.nanmax(rhat))
+                    max_rhat = np.nanmax(rhat)
+                    print1('Max R-hat: %.4f' % max_rhat)
                     print2('R-hat per parameter: %s' % str(np.round(rhat, 4)))
                     logger.info('R-hat values: %s' % str(rhat))
+                    # Automatic convergence stop
+                    if (self.rhat_threshold > 0
+                            and self.iteration[index] > self.burn_in
+                            and max_rhat <= self.rhat_threshold):
+                        print1('R-hat converged (%.4f <= %.4f). Stopping.'
+                               % (max_rhat, self.rhat_threshold))
+                        self.update_histograms('_final')
+                        return 'STOP'
             else:
                 print2('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
             logger.info('Completed %i iterations' % self.iteration[index])
@@ -2361,10 +2448,8 @@ class DreamAlgorithm(BayesianAlgorithm):
 
         x0 = self.current_pset[idx]
 
-        # Draw two donor states from the ZS archive (without replacement)
-        sel = np.random.choice(len(self.archive), 2, replace=False)
-        x1 = self.archive[sel[0]]
-        x2 = self.archive[sel[1]]
+        # Draw 2*delta donor states from the ZS archive (without replacement)
+        sel = np.random.choice(len(self.archive), 2 * self.delta, replace=False)
 
         # Sample crossover value and mask
         cr_idx = np.random.choice(self.ncr_count, p=self.cr_probs)
@@ -2381,21 +2466,28 @@ class DreamAlgorithm(BayesianAlgorithm):
         else:
             d_prime = int(np.sum(ds))
             if self.adaptive_step_size:
-                gamma = 2.38 / np.sqrt(2.0 * d_prime)  # delta=1 (one chain pair)
+                gamma = 2.38 / np.sqrt(2.0 * self.delta * d_prime)
             else:
                 gamma = self.step_size
 
         new_vars = []
         for i, d in enumerate(np.random.permutation(ds)):
             k = self.variables[i]
-            diff = x1.get_param(k.name).diff(x2.get_param(k.name)) if d else 0.0
+            if d:
+                # Sum of delta difference vectors: sum_{j=1}^{delta} (Z_a_j - Z_b_j)
+                total_diff = 0.0
+                for j in range(self.delta):
+                    total_diff += self.archive[sel[j]].get_param(k.name).diff(
+                        self.archive[sel[self.delta + j]].get_param(k.name))
+            else:
+                total_diff = 0.0
             zeta = np.random.normal(0, self.config.config['zeta'])
             lamb = np.random.uniform(-self.config.config['lambda'], self.config.config['lambda'])
 
             # Differential evolution calculation (while satisfying detailed balance)
             try:
                 # Do not reflect the parameter (need to reject if outside bounds)
-                new_var = x0.get_param(k.name).add(zeta + (1. + lamb) * gamma * diff, False)
+                new_var = x0.get_param(k.name).add(zeta + (1. + lamb) * gamma * total_diff, False)
                 new_vars.append(new_var)
             except OutOfBoundsException:
                 logger.debug("Variable %s is outside of bounds")
