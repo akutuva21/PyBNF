@@ -94,6 +94,7 @@ class TestObjectiveFunctions:
         cls.sos = objective.SumOfSquaresObjective()
         cls.norm_sos = objective.NormSumOfSquaresObjective()
         cls.ave_norm_sos = objective.AveNormSumOfSquaresObjective()
+        cls.kl = objective.KLLikelihood()
 
     def test_chi_square(self):
         npt.assert_almost_equal(self.chi_sq.evaluate(self.d1s, self.d1e_sd), 0.797777777777778)  # Value computed by hand
@@ -133,6 +134,52 @@ class TestObjectiveFunctions:
     def test_round_ind_var(self):
         obj = objective.ChiSquareObjective(ind_var_rounding=1)
         npt.assert_almost_equal(obj.evaluate(self.d1round, self.d1e_sd), 0.797777777777778)  # Value computed by hand
+
+    def test_kl_positive(self):
+        """KL objective should return a non-negative value"""
+        # Use d1e as both sim and exp (same shape required for KLLikelihood)
+        result = self.kl.evaluate(self.d1e, self.d1e)
+        assert result >= 0
+
+    def test_kl_better_fit_lower_score(self):
+        """A better fit should produce a lower KL score"""
+        # Create "good fit" sim data (close to exp)
+        data_good = [
+            '# x    obs1    obs3\n',
+            ' 0 3.1   5.1\n',
+            ' 1 2.1   6.1\n',
+            ' 2 4.1   10.1\n'
+        ]
+        d_good = data.Data()
+        d_good.data = d_good._read_file_lines(data_good, '\s+')
+
+        # Create "bad fit" sim data (far from exp)
+        data_bad = [
+            '# x    obs1    obs3\n',
+            ' 0 100   1\n',
+            ' 1 1   100\n',
+            ' 2 1   1\n'
+        ]
+        d_bad = data.Data()
+        d_bad.data = d_bad._read_file_lines(data_bad, '\s+')
+
+        good_score = self.kl.evaluate(d_good, self.d1e)
+        bad_score = self.kl.evaluate(d_bad, self.d1e)
+        assert good_score < bad_score
+
+    def test_kl_value(self):
+        """KL objective should return the correct value (negative cross-entropy, negated)"""
+        # exp = [3, 2, 4], sim = [3, 2, 4] => normalized sim = [3/9, 2/9, 4/9]
+        # For obs1: -sum([3, 2, 4] * log([3/9, 2/9, 4/9]))
+        exp_obs1 = np.array([3., 2., 4.])
+        sim_norm = exp_obs1 / exp_obs1.sum()
+        expected_obs1 = -np.sum(exp_obs1 * np.log(sim_norm))
+        # For obs3: exp = [5, 6, 10], sim = [5, 6, 10]
+        exp_obs3 = np.array([5., 6., 10.])
+        sim_norm3 = exp_obs3 / exp_obs3.sum()
+        expected_obs3 = -np.sum(exp_obs3 * np.log(sim_norm3))
+        expected = expected_obs1 + expected_obs3
+        npt.assert_almost_equal(self.kl.evaluate(self.d1e, self.d1e), expected)
 
     @raises(printing.PybnfError)
     def test_unused_col(self):

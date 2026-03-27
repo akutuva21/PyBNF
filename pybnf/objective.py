@@ -405,9 +405,9 @@ class KLLikelihood(ColumnSummationObjective):
     """
 
     def eval_column(self, sim_data, exp_data, col_name):
-        sim_column = sim_data[:, sim_data.cols[col_name]]
-        exp_column = exp_data[:, exp_data.cols[col_name]]
-        return sum(exp_column * np.log(sim_column / sum(sim_column)))
+        sim_column = sim_data[col_name]
+        exp_column = exp_data[col_name]
+        return -sum(exp_column * np.log(sim_column / sum(sim_column)))
 
 
 class ConstraintCounter(ObjectiveFunction):
