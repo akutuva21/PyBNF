@@ -1,0 +1,10 @@
+{
+  "description": "Rosenbrock/banana distribution, 2D, a=1, b=10",
+  "target_type": "banana",
+  "dimension": 2,
+  "parameters": ["x1", "x2"],
+  "a": 1.0,
+  "b": 10.0,
+  "posterior_mode": [1.0, 1.0],
+  "notes": "log p(x1,x2) = -0.5*[(a-x1)^2 + b*(x2-x1^2)^2]. Mode at (a, a^2)=(1,1). The posterior has a narrow curved valley along x2=x1^2. Marginal for x1 is approximately N(1, 1). Marginal for x2 is non-Gaussian due to curvature. Verify that the sampled mean is near (1, ~1.5) and that the x1-x2 scatter plot shows the characteristic banana shape."
+}

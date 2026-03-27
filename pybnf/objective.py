@@ -428,3 +428,17 @@ class ConstraintCounter(ObjectiveFunction):
 
     def evaluate(self, sim_data, exp_data, show_warnings=True):
         raise NotImplementedError("ConstraintCounter does not implement evaluate()")
+
+
+class DirectPassObjective(ObjectiveFunction):
+    """
+    Passes through the score value directly from the simulated data.
+
+    Expects the simulated data to contain a single column 'score' with a single row.
+    The experimental data is ignored (but a dummy .exp file is still required by the config parser).
+    """
+
+    def evaluate(self, sim_data, exp_data, show_warnings=True):
+        if 'score' not in sim_data.cols:
+            raise PybnfError("DirectPassObjective requires simulated data to have a 'score' column")
+        return float(sim_data.data[0, sim_data.cols['score']])

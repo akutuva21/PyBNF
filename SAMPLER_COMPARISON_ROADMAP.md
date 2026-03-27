@@ -4,27 +4,27 @@ Compare the three Bayesian samplers in PyBNF: Adaptive MCMC (`am`), DREAM(ZS) (`
 
 ## Phase 1: Infrastructure
 
-- [ ] Add ESS (Effective Sample Size) computation to `BayesianAlgorithm`
+- [x] Add ESS (Effective Sample Size) computation to `BayesianAlgorithm`
   - Compute from chain autocorrelation (bulk ESS and tail ESS per Vehtari et al. 2021)
   - Report alongside rank-normalized split-R-hat every 10 iterations
   - Write ESS to output files for post-hoc analysis
-- [ ] Refactor rank-normalized split-R-hat out of `DreamAlgorithm` into `BayesianAlgorithm`
+- [x] Refactor rank-normalized split-R-hat out of `DreamAlgorithm` into `BayesianAlgorithm`
   - All three samplers should use the same convergence diagnostic
   - Add automatic convergence stop (`rhat_threshold`) to `BayesianAlgorithm` base class
-- [ ] Add ESS/evaluation metric (ESS divided by total model evaluations)
+- [x] Add ESS/evaluation metric (ESS divided by total model evaluations)
 
 ## Phase 2: Analytical Test Targets
 
 Build lightweight test models that compute score directly from parameters (no BioNetGen needed).
 
-- [ ] **Multivariate Gaussian** (d configurable): known mean, covariance, and marginals
+- [x] **Multivariate Gaussian** (d configurable): known mean, covariance, and marginals
   - Simplest correctness check: compare sampled mean/variance to truth
   - Scale d = 5, 10, 20, 50 for dimensionality study
-- [ ] **Banana (Rosenbrock)**: correlated curved posterior
+- [x] **Banana (Rosenbrock)**: correlated curved posterior
   - Tests sampling along non-linear ridges
-- [ ] **Multimodal mixture**: 2-3 separated Gaussian modes with known weights
+- [x] **Multimodal mixture**: 2-3 separated Gaussian modes with known weights
   - Tests mode-jumping; where snooker and SCREAM diversity should help
-- [ ] Each target needs: trivial `.bngl` or direct-score model, `.conf` files for all 3 samplers, ground truth file with analytical moments
+- [x] Each target needs: trivial `.bngl` or direct-score model, `.conf` files for all 3 samplers, ground truth file with analytical moments
 
 ## Phase 3: Benchmark Harness
 

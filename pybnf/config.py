@@ -3,7 +3,7 @@
 
 from .data import Data, DuplicateColumnError
 from .objective import ChiSquareObjective, ChiSquareObjective_Dynamic, NegBinLikelihood_Dynamic, NegBinLikelihood, SumOfSquaresObjective, NormSumOfSquaresObjective, \
-    AveNormSumOfSquaresObjective, SumOfDiffsObjective, NegBinLikelihood, KLLikelihood
+    AveNormSumOfSquaresObjective, SumOfDiffsObjective, NegBinLikelihood, KLLikelihood, DirectPassObjective
 
 from .pset import BNGLModel, ModelError, SbmlModel, SbmlModelNoTimeout, FreeParameter, TimeCourse, ParamScan, \
     Mutation, MutationSet
@@ -424,6 +424,9 @@ class Configuration(object):
                         model = SbmlModelNoTimeout(mf, self._absolute(mf), save_files=save_flag, integrator=self.config['sbml_integrator'])
                     else:
                         model = SbmlModel(mf, self._absolute(mf), save_files=save_flag, integrator=self.config['sbml_integrator'])
+                elif re.search('\.target$', mf):
+                    from .analytical_model import AnalyticalModel
+                    model = AnalyticalModel(mf)
                 else:
                     # Should not get here - should be caught in parsing
                     raise ValueError('Unrecognized model suffix in %s' % mf)
@@ -634,9 +637,11 @@ class Configuration(object):
                                                     "configuration neg_bin_r defined")
         elif self.config['objfunc'] == 'kl':
             return KLLikelihood(self.config['ind_var_rounding'])
+        elif self.config['objfunc'] == 'direct_pass':
+            return DirectPassObjective()
         raise UnknownObjectiveFunctionError("Objective function %s not defined" % self.config['objfunc'],
               "Objective function %s is not defined. Valid objective function choices are: "
-              "chi_sq, sos, sod, norm_sos, ave_norm_sos, neg_bin, kl" % self.config['objfunc'])
+              "chi_sq, sos, sod, norm_sos, ave_norm_sos, neg_bin, kl, direct_pass" % self.config['objfunc'])
 
     def _load_variables(self):
         """
@@ -704,6 +709,11 @@ class Configuration(object):
         FREE parameter specified in a model file appears in the config file
         :return:
         """
+        # Analytical models accept any variables from the config — skip correspondence check
+        from .analytical_model import AnalyticalModel
+        if any(isinstance(m, AnalyticalModel) for m in self.models.values()):
+            return
+
         model_vars = set()
         for m in self.models.values():
             model_vars.update(m.param_names)
