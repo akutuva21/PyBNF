@@ -370,12 +370,14 @@ class Configuration(object):
                 for i,v in time.items():
                     timeDict[i] = v
             elif re.search('\.xml$', mf):
-                suffix = self.config['time_course'][0]['suffix']
-                try:
-                    time = self.config['time_course'][0]['step']  
-                except KeyError:
-                    time = 1      
-                timeDict[suffix] = int(float(time))
+                for tc in self.config['time_course']:
+                    suffix = tc['suffix']
+                    try:
+                        step = float(tc['step'])
+                    except KeyError:
+                        step = 1.
+                    end_time = float(tc['time'])
+                    timeDict[suffix] = int(np.round(end_time / step))
         return timeDict    
         
                 
