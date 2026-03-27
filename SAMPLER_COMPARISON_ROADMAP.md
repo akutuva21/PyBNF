@@ -28,10 +28,10 @@ Build lightweight test models that compute score directly from parameters (no Bi
 
 ## Phase 3: Benchmark Harness
 
-- [ ] Script that runs each sampler N times (N >= 5 for variance) on the same target with the same evaluation budget
-- [ ] Collect per-run: ESS per parameter, ESS/evaluation, R-hat trajectory, acceptance rate, wall-clock time
-- [ ] For analytical targets: distance metric D = normalized error in mean and std (Laloy & Vrugt 2012, Eq. 10)
-- [ ] Output: comparison tables and convergence trajectory plots
+- [x] Script that runs each sampler N times (N >= 5 for variance) on the same target with the same evaluation budget
+- [x] Collect per-run: ESS per parameter, ESS/evaluation, R-hat trajectory, acceptance rate, wall-clock time
+- [x] For analytical targets: distance metric D = normalized error in mean and std (Laloy & Vrugt 2012, Eq. 10)
+- [x] Output: comparison tables and convergence trajectory plots
 
 ## Phase 4: Experiments
 
