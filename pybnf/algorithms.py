@@ -2075,6 +2075,10 @@ class DreamAlgorithm(BayesianAlgorithm):
         self.archive_thin_rate = config.config['archive_thin_rate']
         self.archive = []  # list of PSet objects
 
+        # Snooker update
+        self.snooker_prob = config.config['snooker_prob']
+        self.gen_log_snooker_correction = [0.0] * self.num_parallel
+
     def start_run(self, setup_samples=True):
         first_psets = super().start_run(setup_samples)
         # Initialize the ZS archive with m0 random draws from the prior
@@ -2088,6 +2092,67 @@ class DreamAlgorithm(BayesianAlgorithm):
             np.log10(pset[v.name]) if v.log_space else pset[v.name]
             for v in self.variables
         ])
+
+    def calculate_snooker_pset(self, idx):
+        """
+        Snooker update proposal (ter Braak & Vrugt, 2008).
+        Projects archive points onto the line through the current state and a reference archive point,
+        then jumps along that axis.
+
+        Returns (PSet or None, log_correction) where log_correction is the log of the Hastings
+        correction factor (d-1)*log(||Xp - Zc|| / ||X - Zc||).
+        """
+        x0 = self.current_pset[idx]
+        x0_vec = self._param_vec(x0)
+
+        # Draw three distinct archive indices: c (reference), a, b (for projection difference)
+        sel = np.random.choice(len(self.archive), 3, replace=False)
+        zc_vec = self._param_vec(self.archive[sel[0]])
+        za_vec = self._param_vec(self.archive[sel[1]])
+        zb_vec = self._param_vec(self.archive[sel[2]])
+
+        # Snooker axis: line through x0 and zc
+        axis = x0_vec - zc_vec
+        axis_norm_sq = np.dot(axis, axis)
+        if axis_norm_sq < 1e-20:
+            return None, 0.0
+
+        # Project za and zb onto the snooker axis
+        za_proj = zc_vec + axis * (np.dot(za_vec - zc_vec, axis) / axis_norm_sq)
+        zb_proj = zc_vec + axis * (np.dot(zb_vec - zc_vec, axis) / axis_norm_sq)
+
+        # Jump vector along the axis
+        diff_proj = za_proj - zb_proj
+
+        # Gamma for snooker: U(1.2, 2.2) per Vrugt (2016)
+        gamma_s = np.random.uniform(1.2, 2.2)
+
+        # Small perturbations
+        zeta_vec = np.random.normal(0, self.config.config['zeta'], size=self.n_dim)
+        lamb = np.random.uniform(-self.config.config['lambda'], self.config.config['lambda'])
+
+        xp_vec = x0_vec + zeta_vec + (1.0 + lamb) * gamma_s * diff_proj
+
+        # Build the proposed PSet
+        new_vars = []
+        for i, v in enumerate(self.variables):
+            try:
+                if v.log_space:
+                    new_var = v.set_value(10**xp_vec[i], reflect=False)
+                else:
+                    new_var = v.set_value(xp_vec[i], reflect=False)
+                new_vars.append(new_var)
+            except OutOfBoundsException:
+                return None, 0.0
+
+        # Hastings correction: (||Xp - Zc|| / ||X - Zc||)^(d-1)
+        dist_xp_zc = np.linalg.norm(xp_vec - zc_vec)
+        dist_x0_zc = np.linalg.norm(x0_vec - zc_vec)
+        if dist_x0_zc < 1e-20:
+            return None, 0.0
+        log_correction = (self.n_dim - 1) * np.log(dist_xp_zc / dist_x0_zc)
+
+        return PSet(new_vars), log_correction
 
     def compute_rhat(self):
         """
@@ -2174,8 +2239,9 @@ class DreamAlgorithm(BayesianAlgorithm):
 
         lnposterior = lnprior + lnlikelihood
 
-        # Metropolis-Hastings criterion
-        ln_p_accept = min(0., lnposterior - self.ln_current_P[index])
+        # Metropolis-Hastings criterion (includes snooker Hastings correction when applicable)
+        ln_p_accept = min(0., lnposterior - self.ln_current_P[index]
+                          + self.gen_log_snooker_correction[index])
         if np.log(np.random.uniform()) < ln_p_accept:  # accept update based on MH criterion
             self.current_pset[index] = pset
             self.ln_current_P[index] = lnposterior
@@ -2261,8 +2327,16 @@ class DreamAlgorithm(BayesianAlgorithm):
 
             next_gen = []
             for i, p in enumerate(self.current_pset):
-                new_pset, cr_idx = self.calculate_new_pset(i)
-                self.gen_cr_indices[i] = cr_idx
+                if np.random.uniform() < self.snooker_prob:
+                    # Snooker update
+                    new_pset, log_corr = self.calculate_snooker_pset(i)
+                    self.gen_log_snooker_correction[i] = log_corr
+                    self.gen_cr_indices[i] = None  # no CR for snooker
+                else:
+                    # Parallel direction update
+                    new_pset, cr_idx = self.calculate_new_pset(i)
+                    self.gen_log_snooker_correction[i] = 0.0
+                    self.gen_cr_indices[i] = cr_idx
                 if new_pset:
                     new_pset.name = 'iter%irun%i' % (self.iteration[i], i)
                     next_gen.append(new_pset)

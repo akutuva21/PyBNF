@@ -205,7 +205,8 @@ class Configuration(object):
             'crossover_number': 3,
             'adaptive_step_size': True,
             'archive_size': None,
-            'archive_thin_rate': 10
+            'archive_thin_rate': 10,
+            'snooker_prob': 0.1
         }
         return default
 
@@ -224,7 +225,7 @@ class Configuration(object):
                         'mh': {'step_size', 'burn_in', 'sample_every', 'output_hist_every', 'hist_bins',
                                 'credible_intervals', 'beta', 'beta_range', 'exchange_every', 'beta_max', 'cooling',
                                 'crossover_number', 'zeta', 'lambda', 'gamma_prob', 'adaptive', 'time_length',
-                                'archive_size', 'archive_thin_rate'},
+                                'archive_size', 'archive_thin_rate', 'snooker_prob'},
                         'sim': {'simplex_step', 'simplex_log_step', 'simplex_reflection', 'simplex_expansion',
                                 'simplex_contraction', 'simplex_shrink', 'simplex_max_iterations',
                                 'simplex_stop_tol'}
