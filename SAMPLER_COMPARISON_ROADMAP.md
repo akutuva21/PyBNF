@@ -35,12 +35,23 @@ Build lightweight test models that compute score directly from parameters (no Bi
 
 ## Phase 4: Experiments
 
+All experiment configs and the master runner are ready in `benchmarks/`.
+Run: `python benchmarks/run_all_experiments.py --replicates 5 --skip-egfr`
+Or specific experiments: `python benchmarks/run_all_experiments.py -e 1 2`
+
 - [ ] **Correctness**: all 3 samplers on multivariate Gaussian, verify sampled moments match truth
+  - Config: `benchmarks/gaussian_d5/`, run with `run_benchmark.py gaussian_d5`
 - [ ] **Efficiency (low-d)**: Gaussian d=5, compare ESS/evaluation across samplers
+  - Same run as Correctness — both metrics extracted from `gaussian_d5`
 - [ ] **Efficiency (scaling)**: Gaussian at d=5, 10, 20, 50 — how does ESS/evaluation scale?
+  - Configs: `benchmarks/gaussian_d{5,10,20,50}/`
+  - Scaling table printed by `run_all_experiments.py --summary-only`
 - [ ] **Correlated target**: Banana distribution, compare ESS and mixing
+  - Config: `benchmarks/banana/`
 - [ ] **Multimodal target**: Mixture of Gaussians, compare mode coverage and ESS
-- [ ] **Real-world**: EGFR benchmark (d=40), compare convergence speed and posterior agreement
+  - Config: `benchmarks/multimodal/`
+- [ ] **Real-world**: EGFR benchmark (d=37), compare convergence speed and posterior agreement
+  - Config: `benchmarks/egfr/` (requires BioNetGen; use `--skip-egfr` to exclude)
 
 ## Phase 5: Analysis and Write-up
 
