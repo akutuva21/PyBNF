@@ -129,7 +129,9 @@ class Configuration(object):
         self.config = self.default_config()
         for k, v in d.items():
             self.config[k] = v
-        
+        if 'step_size' in d:
+            self.config['adaptive_step_size'] = False
+
         self._data_map = dict()  # Internal structure to help get both regular and mutant data to the right place
         self.models = self._load_models()
         logger.debug('Loaded models')
@@ -200,7 +202,8 @@ class Configuration(object):
             'gamma_prob': 0.1,
             'zeta': 1e-6,
             'lambda': 0.1,
-            'crossover_number': 3
+            'crossover_number': 3,
+            'adaptive_step_size': True
         }
         return default
 

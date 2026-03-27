@@ -2048,9 +2048,97 @@ class DreamAlgorithm(BayesianAlgorithm):
         self.n_dim = len(self.variables)
         self.all_idcs = np.arange(self.num_parallel)
         self.ncr = [(1+x)/self.config.config['crossover_number'] for x in range(self.config.config['crossover_number'])]
+        self.ncr_count = len(self.ncr)
         self.g_prob = self.config.config['gamma_prob']
+        self.adaptive_step_size = config.config['adaptive_step_size']
         self.acceptances = [0]*self.num_parallel
         self.acceptance_rates = [0.0]*self.num_parallel
+
+        # Chain history for R-hat and outlier detection
+        self.chain_history = [[] for _ in range(self.num_parallel)]
+        self.ln_posterior_history = [[] for _ in range(self.num_parallel)]
+
+        # CR adaptation state
+        self.cr_probs = np.ones(self.ncr_count) / self.ncr_count
+        self.cr_total_distance = np.zeros(self.ncr_count)
+        self.cr_usage_count = np.zeros(self.ncr_count)
+        self.cr_adapt_end = self.burn_in // 2
+        self.cr_frozen = False
+
+        # Per-generation tracking for CR adaptation
+        self.gen_cr_indices = [None] * self.num_parallel
+        self.gen_x_old = [None] * self.num_parallel
+        self.gen_x_std = np.ones(self.n_dim)
+
+    def _param_vec(self, pset):
+        """Extract parameter values from a PSet as a numpy array in the sampling space."""
+        return np.array([
+            np.log10(pset[v.name]) if v.log_space else pset[v.name]
+            for v in self.variables
+        ])
+
+    def compute_rhat(self):
+        """
+        Compute univariate Gelman-Rubin R-hat for each parameter using the last 50% of chain history.
+        Returns a numpy array of shape (n_dim,) or None if insufficient data.
+        """
+        min_len = min(len(h) for h in self.chain_history)
+        if min_len < 10:
+            return None
+
+        start = min_len // 2
+        n = min_len - start
+        N = self.num_parallel
+
+        chains = np.array([self.chain_history[j][start:min_len] for j in range(N)])  # (N, n, n_dim)
+        mu_chains = np.mean(chains, axis=1)  # (N, n_dim)
+        s2_chains = np.var(chains, axis=1, ddof=1)  # (N, n_dim)
+
+        B = n * np.var(mu_chains, axis=0, ddof=1)  # (n_dim,)
+        W = np.mean(s2_chains, axis=0)  # (n_dim,)
+
+        sigma2 = ((n - 1) / n) * W + (1.0 / n) * B
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            rhat = np.sqrt((N + 1) / N * (sigma2 / W) - (n - 1) / (N * n))
+
+        return rhat
+
+    def detect_and_reset_outliers(self):
+        """
+        Detect outlier chains using IQR on mean log-posteriors (last 50% of history).
+        Reset outlier chains to copies of randomly selected non-outlier chains.
+        """
+        min_len = min(len(h) for h in self.ln_posterior_history)
+        start = min_len // 2
+        if min_len - start < 5:
+            return
+
+        mean_ln_p = np.array([
+            np.mean(self.ln_posterior_history[j][start:min_len]) for j in range(self.num_parallel)
+        ])
+
+        Q75 = np.percentile(mean_ln_p, 75)
+        Q25 = np.percentile(mean_ln_p, 25)
+        iqr = Q75 - Q25
+        threshold = Q25 - 2.0 * iqr
+
+        outlier_indices = np.where(mean_ln_p < threshold)[0]
+        if len(outlier_indices) == 0:
+            return
+
+        good_indices = [i for i in range(self.num_parallel) if i not in outlier_indices]
+        if len(good_indices) == 0:
+            return
+
+        for out_idx in outlier_indices:
+            donor_idx = np.random.choice(good_indices)
+            logger.warning('Outlier chain %d reset to chain %d at iteration %d'
+                           % (out_idx, donor_idx, self.iteration[out_idx]))
+            self.current_pset[out_idx] = copy.deepcopy(self.current_pset[donor_idx])
+            self.ln_current_P[out_idx] = self.ln_current_P[donor_idx]
+            self.ln_posterior_history[out_idx][start:min_len] = self.ln_posterior_history[donor_idx][start:min_len]
+            self.chain_history[out_idx][start:min_len] = self.chain_history[donor_idx][start:min_len]
 
     def got_result(self, res):
         """
@@ -2061,7 +2149,6 @@ class DreamAlgorithm(BayesianAlgorithm):
         :type res: Result
         :return: List of PSet(s) to be run next.
         """
-
 
         pset = res.pset
         score = res.score
@@ -2081,6 +2168,19 @@ class DreamAlgorithm(BayesianAlgorithm):
             self.current_pset[index] = pset
             self.ln_current_P[index] = lnposterior
             self.acceptances[index] += 1
+
+        # Store chain history (after accept/reject, so it reflects the kept state)
+        self.chain_history[index].append(self._param_vec(self.current_pset[index]))
+        self.ln_posterior_history[index].append(self.ln_current_P[index])
+
+        # CR adaptation: compute standardized distance traveled
+        if not self.cr_frozen and self.gen_cr_indices[index] is not None:
+            x_new_vec = self._param_vec(self.current_pset[index])
+            if self.gen_x_old[index] is not None:
+                diff_vec = x_new_vec - self.gen_x_old[index]
+                sd_dist = np.sum((diff_vec / np.maximum(self.gen_x_std, 1e-10)) ** 2)
+                self.cr_total_distance[self.gen_cr_indices[index]] += sd_dist
+                self.cr_usage_count[self.gen_cr_indices[index]] += 1
 
         # Record that this individual is complete
         self.wait_for_sync[index] = True
@@ -2106,14 +2206,44 @@ class DreamAlgorithm(BayesianAlgorithm):
             if self.iteration[index] % 10 == 0:
                 print1('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
                 print2('Acceptance rates: %s\n' % str(self.acceptance_rates))
+                rhat = self.compute_rhat()
+                if rhat is not None:
+                    print1('Max R-hat: %.4f' % np.nanmax(rhat))
+                    print2('R-hat per parameter: %s' % str(np.round(rhat, 4)))
+                    logger.info('R-hat values: %s' % str(rhat))
             else:
                 print2('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
             logger.info('Completed %i iterations' % self.iteration[index])
             print2('Current -Ln Posteriors: %s' % str(self.ln_current_P))
 
+            # Outlier detection (every 10 iterations, only during burn-in)
+            if self.iteration[index] % 10 == 0 and self.iteration[index] <= self.burn_in:
+                self.detect_and_reset_outliers()
+
+            # CR adaptation: update probabilities
+            if (self.iteration[index] % 10 == 0
+                    and self.iteration[index] <= self.cr_adapt_end
+                    and not self.cr_frozen):
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    mean_dist = self.cr_total_distance / np.maximum(self.cr_usage_count, 1)
+                if np.sum(mean_dist) > 0:
+                    self.cr_probs = mean_dist / np.sum(mean_dist)
+                    logger.info('Updated CR probabilities: %s' % str(self.cr_probs))
+            elif self.iteration[index] > self.cr_adapt_end and not self.cr_frozen:
+                self.cr_frozen = True
+                logger.info('CR probabilities frozen at iteration %d: %s'
+                            % (self.iteration[index], str(self.cr_probs)))
+
+            # Save old states and compute population std for CR adaptation
+            for i in range(self.num_parallel):
+                self.gen_x_old[i] = self._param_vec(self.current_pset[i])
+            all_vecs = np.array(self.gen_x_old)
+            self.gen_x_std = np.std(all_vecs, axis=0)
+
             next_gen = []
             for i, p in enumerate(self.current_pset):
-                new_pset = self.calculate_new_pset(i)
+                new_pset, cr_idx = self.calculate_new_pset(i)
+                self.gen_cr_indices[i] = cr_idx
                 if new_pset:
                     new_pset.name = 'iter%irun%i' % (self.iteration[i], i)
                     next_gen.append(new_pset)
@@ -2129,10 +2259,11 @@ class DreamAlgorithm(BayesianAlgorithm):
 
     def calculate_new_pset(self, idx):
         """
-        Uses differential evolution-like update to calculate new PSet
+        Uses differential evolution-like update to calculate new PSet.
+        Returns (PSet, cr_idx) or (None, cr_idx) if the proposal is out of bounds.
 
         :param idx: Index of PSet to update
-        :return:
+        :return: tuple of (PSet or None, int)
         """
 
         # Choose individuals (not individual to be updated) for mutation
@@ -2141,15 +2272,24 @@ class DreamAlgorithm(BayesianAlgorithm):
         x1 = self.current_pset[sel[0]]
         x2 = self.current_pset[sel[1]]
 
-        # Sample the probability of modifying a parameter
-        cr = np.random.choice(self.ncr)
+        # Sample crossover value and mask
+        cr_idx = np.random.choice(self.ncr_count, p=self.cr_probs)
+        cr = self.ncr[cr_idx]
         while True:
             ds = np.random.uniform(size=self.n_dim) <= cr  # sample parameter subspace
             if np.any(ds):
                 break
 
-        # Sample whether to jump to the mode (when gamma = 1)
-        gamma = 1 if np.random.uniform() < self.g_prob else self.step_size
+        # Gamma selection: mode jump (gamma=1) or adaptive/fixed step size
+        if np.random.uniform() < self.g_prob:
+            gamma = 1
+            ds[:] = True  # mode jump updates all dimensions
+        else:
+            d_prime = int(np.sum(ds))
+            if self.adaptive_step_size:
+                gamma = 2.38 / np.sqrt(2.0 * d_prime)  # delta=1 (one chain pair)
+            else:
+                gamma = self.step_size
 
         new_vars = []
         for i, d in enumerate(np.random.permutation(ds)):
@@ -2165,9 +2305,9 @@ class DreamAlgorithm(BayesianAlgorithm):
                 new_vars.append(new_var)
             except OutOfBoundsException:
                 logger.debug("Variable %s is outside of bounds")
-                return None
+                return None, cr_idx
 
-        return PSet(new_vars)
+        return PSet(new_vars), cr_idx
 
 
 class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
