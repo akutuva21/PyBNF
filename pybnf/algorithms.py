@@ -2046,7 +2046,6 @@ class DreamAlgorithm(BayesianAlgorithm):
     def __init__(self, config):
         super(DreamAlgorithm, self).__init__(config)
         self.n_dim = len(self.variables)
-        self.all_idcs = np.arange(self.num_parallel)
         self.ncr = [(1+x)/self.config.config['crossover_number'] for x in range(self.config.config['crossover_number'])]
         self.ncr_count = len(self.ncr)
         self.g_prob = self.config.config['gamma_prob']
@@ -2069,6 +2068,19 @@ class DreamAlgorithm(BayesianAlgorithm):
         self.gen_cr_indices = [None] * self.num_parallel
         self.gen_x_old = [None] * self.num_parallel
         self.gen_x_std = np.ones(self.n_dim)
+
+        # ZS archive: external archive of past states for proposal generation
+        m0 = config.config['archive_size']
+        self.archive_m0 = m0 if m0 is not None else 10 * self.n_dim
+        self.archive_thin_rate = config.config['archive_thin_rate']
+        self.archive = []  # list of PSet objects
+
+    def start_run(self, setup_samples=True):
+        first_psets = super().start_run(setup_samples)
+        # Initialize the ZS archive with m0 random draws from the prior
+        self.archive = [self.random_pset() for _ in range(self.archive_m0)]
+        logger.info('Initialized ZS archive with %d entries (d=%d)' % (self.archive_m0, self.n_dim))
+        return first_psets
 
     def _param_vec(self, pset):
         """Extract parameter values from a PSet as a numpy array in the sampling space."""
@@ -2234,6 +2246,13 @@ class DreamAlgorithm(BayesianAlgorithm):
                 logger.info('CR probabilities frozen at iteration %d: %s'
                             % (self.iteration[index], str(self.cr_probs)))
 
+            # Grow the ZS archive: every K generations, append current chain states
+            if self.iteration[index] % self.archive_thin_rate == 0:
+                for i in range(self.num_parallel):
+                    self.archive.append(copy.deepcopy(self.current_pset[i]))
+                logger.info('Archive grown to %d entries at iteration %d'
+                            % (len(self.archive), self.iteration[index]))
+
             # Save old states and compute population std for CR adaptation
             for i in range(self.num_parallel):
                 self.gen_x_old[i] = self._param_vec(self.current_pset[i])
@@ -2266,11 +2285,12 @@ class DreamAlgorithm(BayesianAlgorithm):
         :return: tuple of (PSet or None, int)
         """
 
-        # Choose individuals (not individual to be updated) for mutation
-        sel = np.random.choice(self.all_idcs[self.all_idcs != idx], 2, replace=False)
         x0 = self.current_pset[idx]
-        x1 = self.current_pset[sel[0]]
-        x2 = self.current_pset[sel[1]]
+
+        # Draw two donor states from the ZS archive (without replacement)
+        sel = np.random.choice(len(self.archive), 2, replace=False)
+        x1 = self.archive[sel[0]]
+        x2 = self.archive[sel[1]]
 
         # Sample crossover value and mask
         cr_idx = np.random.choice(self.ncr_count, p=self.cr_probs)

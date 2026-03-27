@@ -203,7 +203,9 @@ class Configuration(object):
             'zeta': 1e-6,
             'lambda': 0.1,
             'crossover_number': 3,
-            'adaptive_step_size': True
+            'adaptive_step_size': True,
+            'archive_size': None,
+            'archive_thin_rate': 10
         }
         return default
 
@@ -221,7 +223,8 @@ class Configuration(object):
                         'ss': {'init_size', 'local_min_limit', 'reserve_size'},
                         'mh': {'step_size', 'burn_in', 'sample_every', 'output_hist_every', 'hist_bins',
                                 'credible_intervals', 'beta', 'beta_range', 'exchange_every', 'beta_max', 'cooling',
-                                'crossover_number', 'zeta', 'lambda', 'gamma_prob', 'adaptive', 'time_length'},
+                                'crossover_number', 'zeta', 'lambda', 'gamma_prob', 'adaptive', 'time_length',
+                                'archive_size', 'archive_thin_rate'},
                         'sim': {'simplex_step', 'simplex_log_step', 'simplex_reflection', 'simplex_expansion',
                                 'simplex_contraction', 'simplex_shrink', 'simplex_max_iterations',
                                 'simplex_stop_tol'}
