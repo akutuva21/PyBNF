@@ -880,7 +880,14 @@ class Algorithm(object):
             if sim_count % backup_every == 0 and not backed_up:
                 self.backup(set([pending[fut][0] for fut in pending]))
                 backed_up = True
-            f, res = next(pool)
+            try:
+                f, res = next(pool)
+            except StopIteration:
+                logger.warning('Job pool exhausted unexpectedly — no pending futures remain. '
+                               'This can happen when all proposed parameter sets in a generation '
+                               'are out of bounds. Ending run.')
+                print1('Warning: job pool exhausted (all proposals may have been out of bounds). Ending run.')
+                break
             if isinstance(res, DaskError):
                 if isinstance(res.error, PybnfError):
                     raise res.error  # User-targeted error should be raised instead of skipped
@@ -3135,7 +3142,6 @@ class Adaptive_MCMC(BayesianAlgorithm):
         self.scores = np.zeros((self.num_parallel, self.arr_length))
         # set arrays for features and graphs
         self.parameter_index = np.zeros((self.num_parallel, self.arr_length, len(self.variables)))
-        self.samples_file = None
         self.mu = np.zeros((self.num_parallel, 1, len(self.variables))) 
         # warm start features
         
@@ -3225,7 +3231,7 @@ class Adaptive_MCMC(BayesianAlgorithm):
                 % (self.num_parallel, self.max_iterations))
 
 
-        return super(Adaptive_MCMC, self).start_run(setup_samples = False)
+        return super(Adaptive_MCMC, self).start_run(setup_samples=True)
 
     def got_result(self, res):
         """
@@ -3237,11 +3243,11 @@ class Adaptive_MCMC(BayesianAlgorithm):
         """
         pset = res.pset
         score = res.score
-       
-       
+        self.total_evaluations += 1
+
         # Figure out which parallel run this is from based on the .name field.
         m = re.search(r'(?<=run)\d+', pset.name)
-        index = int(m.group(0))      
+        index = int(m.group(0))
 
         lnprior = self.ln_prior(pset)
         lnlikelihood = -score
@@ -3343,7 +3349,22 @@ class Adaptive_MCMC(BayesianAlgorithm):
 
         # Record that this individual is complete
         self.scores[index][self.factor] = self.ln_current_P[index]
+
+        # Track chain history for convergence diagnostics (R-hat, ESS)
+        if self.current_pset[index] is not None:
+            self.chain_history[index].append(self._param_vec(self.current_pset[index]))
+            self.ln_posterior_history[index].append(self.ln_current_P[index])
+
         self.iteration[index] += 1
+
+        # Standard BayesianAlgorithm sampling
+        if (self.iteration[index] > self.burn_in
+                and self.iteration[index] % self.sample_every == 0):
+            self.sample_pset(self.current_pset[index], self.ln_current_P[index])
+        if (self.iteration[index] > self.burn_in
+                and self.iteration[index] % (self.sample_every * self.output_hist_every) == 0):
+            self.update_histograms('_%i' % self.iteration[index])
+
         self.wait_for_sync[index] = True
         # Wait for entire generation to finish
         if np.all(self.wait_for_sync):
@@ -3358,11 +3379,11 @@ class Adaptive_MCMC(BayesianAlgorithm):
                     self.write_out_scores(i)
                 if self.iteration[i] >= (self.burn_in -1) and self.iteration[i] <= (self.burn_in + self.adaptive):
                     if self.iteration[i] % self.arr_length == 0:
-                        self.write_out_params(i)    
+                        self.write_out_params(i)
                 if self.iteration[i] > (self.burn_in + self.adaptive) and self.iteration[i] % self.config.config['sample_every'] == 0:
                     if self.iteration[i] % self.arr_length == 0:
                         self.write_out_params(i)
-                if self.config.config['output_trajectory']:            
+                if self.config.config['output_trajectory']:
                     if self.iteration[i] >= self.valid_range and self.iteration[i] % self.config.config['sample_every'] == 0:
                         if self.iteration[i] % self.arr_length == 0:
                             self.write_out_trajactorys(i)
@@ -3370,6 +3391,16 @@ class Adaptive_MCMC(BayesianAlgorithm):
                     if self.iteration[i] >= self.valid_range and self.iteration[i] % self.config.config['sample_every'] == 0:
                         if self.iteration[i] % self.arr_length == 0:
                             self.write_out_trajactorys_noise(i)
+
+            # Convergence diagnostics every 10 iterations
+            if self.iteration[index] % 10 == 0:
+                max_rhat = self.report_convergence_diagnostics(self.iteration[index])
+                if self.check_convergence(self.iteration[index], max_rhat):
+                    self.combine_chains_params()
+                    self.combine_chains_traj()
+                    self.samples_file = self.config.config['output_dir'] + '/Results/A_MCMC/Runs/combined_params.txt'
+                    return 'STOP'
+
             # Set here because I don't want these commands to exacute more then once.
             if min(self.iteration) >= self.max_iterations:
                 # Save the current postion of the MCMC run

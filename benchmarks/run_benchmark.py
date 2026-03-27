@@ -29,7 +29,7 @@ SAMPLERS = ['am', 'dream', 'scream']
 # Running
 # ---------------------------------------------------------------------------
 
-def run_single(conf_path, cwd=None, parallel=None):
+def run_single(conf_path, cwd=None, parallel=None, timeout=14400):
     """Run one PyBNF fit, returning wall-clock seconds and success flag."""
     env = os.environ.copy()
     cmd = [sys.executable, '-m', 'pybnf', '-c', conf_path, '-o']
@@ -37,8 +37,13 @@ def run_single(conf_path, cwd=None, parallel=None):
         env['PYBNF_PARALLEL'] = str(parallel)
 
     t0 = time.time()
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600,
-                            cwd=cwd, env=env)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                                cwd=cwd, env=env)
+    except subprocess.TimeoutExpired:
+        elapsed = time.time() - t0
+        print('  TIMEOUT after %.0fs' % elapsed)
+        return elapsed, False
     elapsed = time.time() - t0
 
     success = result.returncode == 0
@@ -51,7 +56,8 @@ def run_single(conf_path, cwd=None, parallel=None):
     return elapsed, success
 
 
-def run_sampler(bench_dir, sampler, replicate, parallel=None, overrides=None):
+def run_sampler(bench_dir, sampler, replicate, parallel=None, overrides=None,
+                timeout=14400):
     """
     Run one replicate of a sampler. Adjusts the output_dir in a temporary
     copy of the .conf so each replicate writes to its own directory.
@@ -83,7 +89,8 @@ def run_sampler(bench_dir, sampler, replicate, parallel=None, overrides=None):
                 f.write(line)
 
     print('  %s rep %d ...' % (sampler, replicate), end=' ', flush=True)
-    elapsed, success = run_single(conf_patched, cwd=bench_dir, parallel=parallel)
+    elapsed, success = run_single(conf_patched, cwd=bench_dir, parallel=parallel,
+                                   timeout=timeout)
     if success:
         print('%.1fs' % elapsed)
     return {'sampler': sampler, 'replicate': replicate, 'wall_clock': elapsed,
@@ -400,6 +407,8 @@ def main():
                         help='Override max_iterations in all configs')
     parser.add_argument('--burn-in', type=int, default=None,
                         help='Override burn_in in all configs')
+    parser.add_argument('--timeout', type=int, default=14400,
+                        help='Per-run timeout in seconds (default: 14400 = 4h)')
     args = parser.parse_args()
 
     bench_dir = os.path.abspath(args.benchmark_dir)
@@ -430,7 +439,7 @@ def main():
     for sampler in args.samplers:
         for rep in range(args.replicates):
             result = run_sampler(bench_dir, sampler, rep, args.parallel,
-                                 overrides=overrides)
+                                 overrides=overrides, timeout=args.timeout)
             if result is not None:
                 run_results.append(result)
 
