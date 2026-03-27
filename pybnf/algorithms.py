@@ -2077,8 +2077,8 @@ class DreamAlgorithm(BayesianAlgorithm):
         lnposterior = lnprior + lnlikelihood
 
         # Metropolis-Hastings criterion
-        ln_p_accept = np.log10(np.random.uniform()) < min(0., lnposterior - self.ln_current_P[index])
-        if ln_p_accept:  # accept update based on MH criterion
+        ln_p_accept = min(0., lnposterior - self.ln_current_P[index])
+        if np.log(np.random.uniform()) < ln_p_accept:  # accept update based on MH criterion
             self.current_pset[index] = pset
             self.ln_current_P[index] = lnposterior
             self.acceptances[index] += 1
