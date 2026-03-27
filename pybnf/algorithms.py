@@ -2105,6 +2105,7 @@ class DreamAlgorithm(BayesianAlgorithm):
             self.wait_for_sync = [False] * self.num_parallel
 
             if min(self.iteration) >= self.max_iterations:
+                self.update_histograms('_final')
                 return 'STOP'
 
             if self.iteration[index] % 10 == 0:

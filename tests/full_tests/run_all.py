@@ -105,6 +105,29 @@ def run_all():
         outstream.write('Error on T6!\n')
         outstream.write(tb.format_exc())
 
+    try:
+        run_test('T7','T7-dream-trivial','trivial_dream.conf',outstream)
+        # Check credible intervals - same ground truth as T5
+        with open('T7-dream-trivial/fit/Results/credible68_final.txt') as f:
+            f.readline() # header
+            parts_a = f.readline().split()
+            parts_b = f.readline().split()
+            parts_c = f.readline().split()
+            outstream.write('68%% credible for a = [%s, %s] (ground truth [9, 11])\n' % (parts_a[1], parts_a[2]))
+            outstream.write('68%% credible for b = [%s, %s] (ground truth [6.6, 13.4])\n' % (parts_b[1], parts_b[2]))
+            outstream.write('68%% credible for c = [%s, %s] (ground truth [9, 11])\n' % (parts_c[1], parts_c[2]))
+        with open('T7-dream-trivial/fit/Results/credible95_final.txt') as f:
+            f.readline() # header
+            parts_a = f.readline().split()
+            parts_b = f.readline().split()
+            parts_c = f.readline().split()
+            outstream.write('95%% credible for a = [%s, %s] (ground truth [8, 12])\n' % (parts_a[1], parts_a[2]))
+            outstream.write('95%% credible for b = [%s, %s] (ground truth [5.25, 14.75])\n' % (parts_b[1], parts_b[2]))
+            outstream.write('95%% credible for c = [%s, %s] (ground truth [8, 12])\n' % (parts_c[1], parts_c[2]))
+    except Exception:
+        outstream.write('Error on T7!\n')
+        outstream.write(tb.format_exc())
+
 def run_test(name, folder, conffile, outstream, display_best=True):
     """
     Run the specified test case, writing summary to outstream
