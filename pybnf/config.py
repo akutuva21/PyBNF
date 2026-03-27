@@ -420,6 +420,12 @@ class Configuration(object):
             md[model.name] = model
             self._data_map[model.name] = self.config[mf]  # List of exp files associated with this model
 
+        for model in md.values():
+            if isinstance(model, BNGLModel) and not model.has_observables:
+                print1('Warning: Model %s has no observables defined. Fitting will not work without observables.'
+                       % model.file_path)
+                logger.warning('Model %s has no observables defined' % model.file_path)
+
         if self.config['smoothing'] > 1:
             # Check for misuse of 'smoothing' feature
             stochastic = np.any([m.stochastic for m in md.values()])

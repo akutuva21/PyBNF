@@ -118,6 +118,7 @@ class BNGLModel(Model):
         self.actions = []
         self.mutants = []
         self.stochastic = False  # Update during parsing. Used to warn about misuse of 'smoothing'
+        self.has_observables = False
         param_names_set = set()
         self.split_line_index = None  # for insertion of free parameters
         all_lines = [x.strip() for x in self.bngl_file_text.splitlines()]
@@ -125,6 +126,7 @@ class BNGLModel(Model):
 
         in_action_block = False
         in_no_block = True
+        in_observables_block = False
         continuation = ''
         continuation_raw = ''
         continuation_indices = set()
@@ -188,6 +190,13 @@ class BNGLModel(Model):
             # begin and end keywords
             if re.match('begin\s+[a-z][a-z\s]*', line.strip()):
                 in_no_block = False
+                if re.match('begin\s+observables', line.strip()):
+                    in_observables_block = True
+            elif in_observables_block:
+                if re.match('end\s+observables', line.strip()):
+                    in_observables_block = False
+                else:
+                    self.has_observables = True
 
             if in_action_block or in_no_block:
                 skip_lines.update(indices)

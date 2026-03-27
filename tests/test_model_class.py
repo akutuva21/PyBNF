@@ -180,6 +180,43 @@ class TestModel:
         model1 = pset.BNGLModel(self.file4)
         assert not model1.generates_network
 
+    def test_has_observables(self):
+        model = pset.BNGLModel(self.file1)
+        assert model.has_observables
+
+    def test_no_observables(self):
+        """Model with empty observables block should have has_observables=False"""
+        import tempfile, os
+        bngl_content = """begin model
+  begin parameters
+    v1 v1__FREE
+  end parameters
+  begin molecule types
+    A()
+  end molecule types
+  begin seed species
+    A() 100
+  end seed species
+  begin observables
+  end observables
+  begin reaction rules
+    0->A() 1
+  end reaction rules
+end model
+begin actions
+  generate_network({overwrite=>1})
+  simulate({method=>"ode",t_end=>10,n_steps=>10,suffix=>"tc"})
+end actions
+"""
+        fd, path = tempfile.mkstemp(suffix='.bngl')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                f.write(bngl_content)
+            model = pset.BNGLModel(path)
+            assert not model.has_observables
+        finally:
+            os.remove(path)
+
     def test_netfile_read(self):
         netmodel = pset.NetModel('TrickyWP_p1_5', [], [], [], nf=self.file5)
         assert len(netmodel.netfile_lines) == 48
