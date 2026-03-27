@@ -302,49 +302,79 @@ Note: as stated in the Metropolis-Hastings description if a uniform or logunifor
 DREAM
 -----
 
-.. note::
-   DREAM has been validated on simple test cases but has not undergone extensive benchmarking. Users should verify results independently for their specific models. For most use cases, :ref:`Adaptive MCMC <alg-am>` is recommended.
-
 Algorithm
 ^^^^^^^^^
 **D**\ iffe\ **R**\ ential **E**\ volution **A**\ daptive **M**\ etropolis (DREAM), described in [Vrugt2016]_, is an
 MCMC approach for estimating the joint probability distribution of a model's free parameters.  DREAM combines features
 from traditional Bayesian MCMC (e.g. the Metropolis-Hastings acceptance criterion) and differential evolution (parameter
-recombination).  DREAM is purported to accelerate convergence of the MCMC as well as facilitate sampling of multimodal
-distributions.
+recombination).  DREAM accelerates convergence of the MCMC and facilitates sampling of multimodal distributions.
+
+PyBNF implements the DREAM(ZS) variant, which draws proposal donors from a growing external archive of past states
+rather than from the current chain population.  This allows efficient sampling with as few as 3--5 chains regardless
+of the number of parameters.
 
 Parallelization
 ^^^^^^^^^^^^^^^
-DREAM uses parallel MCMC chains whose current state behaves as an individual in a differential evolution fitting run.
-Upon evaluation of each individual (by applying the Metropolis-Hastings criterion), a proposal individual is created
-according to the differential evolution update strategy ``all1``.  Thus the algorithm is synchronized based on the
-evaluation of the current "generation"
+DREAM uses parallel MCMC chains evaluated synchronously in generations.  After all chains in a generation are evaluated,
+the Metropolis-Hastings acceptance criterion is applied, and new proposals are generated for the next generation.
 
-Implementation details
-^^^^^^^^^^^^^^^^^^^^^^
-Many details here are similar to those in the traditional MCMC algorithm, including the requirement for prior
-distributions for the parameters, and the use of the Metropolis-Hastings criterion for acceptance.  However, the use
-of differential evolution features introduces a number of distinctions.  To maintain the required detailed balance
-necessary for MCMC proposal distributions, random perturbations must be introduced to reach all of parameter space.
-Thus a simple proposal for some chain :math:`X` on iteration :math:`i` is :math:`X_{i+1} = X_i + \gamma\left(X_a - X_b\right) + \zeta`
-where :math:`\zeta` is drawn from a standard normal distribution with small standard deviation and :math:`\gamma` is the
-``step_size`` configuration parameter.
+Proposal mechanisms
+^^^^^^^^^^^^^^^^^^^
+DREAM supports two proposal mechanisms, selected randomly each generation with probability controlled by the
+``snooker_prob`` configuration key (default 0.1 for snooker, remainder for parallel direction).
 
-DREAM also incorporates subspace sampling in parameter space, meaning that only a subset of the parameters may be
-modified by the differential evolution update.  A "crossover" number can be set in the configuration file that
-defines a multinomial probability distribution that governs whether a particular parameter will be updated
-(the ``crossover_number`` key).  For each parameter to be updated, we perform the traditional differential evolution
-update (calculating the difference between two other chains for the parameter and scaling by :math:`\gamma`) and then
-introduce another random perturbation that is uniformly distributed between :math:`-\lambda` and :math:`\lambda` as
-defined in the configuration file with key ``lambda``.
+**Parallel direction update.** The proposal for chain :math:`X` on iteration :math:`i` is:
 
-Finally, DREAM enables jumping (approximately) between modes in the posterior distribution.  The user may specify the
-frequency of this jump (which effectively sets :math:`\gamma = 1`) by setting the key ``gamma_prob`` to value between 0
-and 1 in the configuration file.
+.. math::
 
-The algorithm described here is similar to Algorithm 5 in [Vrugt2016]_, but with a few omissions.  The algorithm does
-not implement a convergence check (such as the Gelman-Rubin diagnostic), and we do not automatically prune outlier
-chains.
+   X_{i+1} = X_i + \zeta + (1 + \lambda)\,\gamma \sum_{j=1}^{\delta}\left(Z_{a_j} - Z_{b_j}\right)
+
+where :math:`Z_{a_j}` and :math:`Z_{b_j}` are pairs of states drawn from the external archive, :math:`\delta` is the
+number of chain pairs (``delta``, default 1), :math:`\zeta \sim \mathcal{N}(0, \sigma_\zeta)` is a small normal
+perturbation, :math:`\lambda \sim \mathcal{U}(-\lambda_0, \lambda_0)` is a uniform perturbation, and :math:`\gamma` is
+the jump rate.  By default, :math:`\gamma` is set adaptively to :math:`2.38/\sqrt{2\delta d'}` where :math:`d'` is the
+number of dimensions selected by the crossover mask (this can be overridden by setting ``step_size`` explicitly).
+With probability ``gamma_prob`` (default 0.1), a mode jump is performed by setting :math:`\gamma = 1` and updating all
+dimensions.
+
+**Snooker update** ([terBraak2008]_). Projects archive points onto the line through the current chain state and a
+reference archive point, then jumps along that axis with :math:`\gamma_s \sim \mathcal{U}(1.2, 2.2)`.  The acceptance
+criterion includes a Hastings correction factor :math:`\left(\|X_p - Z_c\| / \|X - Z_c\|\right)^{d-1}` to maintain
+detailed balance.
+
+Subspace sampling
+^^^^^^^^^^^^^^^^^
+DREAM incorporates subspace sampling in parameter space via a crossover mechanism.  A set of crossover probabilities
+is defined by ``crossover_number`` (default 3), giving values :math:`\{1/n_\mathrm{CR}, 2/n_\mathrm{CR}, \ldots, 1\}`.
+One value is drawn each iteration and determines which parameters are updated.  During the first half of burn-in, the
+crossover selection probabilities are adapted based on the standardized Euclidean distance traveled by each crossover
+value, then frozen for the remainder of the run.
+
+ZS archive
+^^^^^^^^^^
+The external archive is initialized with ``archive_size`` random draws from the prior (default :math:`10d` where
+:math:`d` is the number of parameters).  Every ``archive_thin_rate`` generations (default 10), the current chain states
+are appended to the archive.  This constitutes diminishing adaptation, ensuring ergodicity.
+
+Convergence diagnostics
+^^^^^^^^^^^^^^^^^^^^^^^
+Every 10 iterations, the rank-normalized split-:math:`\hat{R}` statistic is computed and reported
+([Vehtari2021]_).  This diagnostic splits each chain in half, rank-normalizes the values to normal scores, and
+computes :math:`\hat{R}` on both the ranked and folded (absolute deviation from median) values.  The maximum across
+location and scale :math:`\hat{R}` is reported for each parameter.  Values near 1.0 indicate convergence; values above
+1.01 suggest the chains have not yet mixed.
+
+If ``rhat_threshold`` is set to a positive value (e.g. 1.05), the algorithm will automatically stop sampling once all
+parameters have :math:`\hat{R}` below the threshold (checked after burn-in).
+
+Outlier chain detection
+^^^^^^^^^^^^^^^^^^^^^^^
+During burn-in, outlier chains are detected every 10 iterations and reset to copies of randomly selected non-outlier
+chains.  Two detection methods are available via the ``outlier_method`` key:
+
+- ``iqr`` (default): Flags chains whose mean log-posterior (over the last 50% of history) falls below
+  :math:`Q_{25} - 2 \cdot \mathrm{IQR}`.
+- ``grubbs``: Applies the Grubbs test at significance level :math:`\alpha = 0.01` to detect a single minimum outlier.
 
 
 .. _alg-sim:
@@ -400,3 +430,6 @@ It is also possible to run the Simplex algorithm on its own, using a custom star
 .. [Moraes2015] Moraes, A. O. S.; Mitre, J. F.; Lage, P. L. C.; Secchi, A. R. A Robust Parallel Algorithm of the Particle Swarm Optimization Method for Large Dimensional Engineering Problems. Appl. Math. Model. 2015, 39 (14), 4223–4241.
 .. [Penas2015] Penas, D. R.; González, P.; Egea, J. A.; Banga, J. R.; Doallo, R. Parallel Metaheuristics in Computational Biology: An Asynchronous Cooperative Enhanced Scatter Search Method. Procedia Comput. Sci. 2015, 51 (1), 630–639.
 .. [Penas2017] Penas, D. R.; González, P.; Egea, J. A.; Doallo, R.; Banga, J. R. Parameter Estimation in Large-Scale Systems Biology Models: A Parallel and Self-Adaptive Cooperative Strategy. BMC Bioinformatics 2017, 18 (1), 52.
+.. [terBraak2008] ter Braak, C. J. F.; Vrugt, J. A. Differential Evolution Markov Chain with Snooker Updater and Fewer Chains. Stat. Comput. 2008, 18 (4), 435–446.
+.. [Vehtari2021] Vehtari, A.; Gelman, A.; Simpson, D.; Carpenter, B.; Bürkner, P.-C. Rank-Normalization, Folding, and Localization: An Improved R-hat for Assessing Convergence of MCMC. Bayesian Anal. 2021, 16 (2), 667–718.
+.. [Vrugt2016] Vrugt, J. A. Markov Chain Monte Carlo Simulation Using the DREAM Software Package: Theory, Concepts, and MATLAB Implementation. Environ. Model. Softw. 2016, 75, 273–316.

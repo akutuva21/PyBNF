@@ -1006,19 +1006,51 @@ For Adaptive MCMC
 For DREAM
 """""""""
 
-step_size: As in Bayesian settings, but here it can be set to 'auto' (Not implemented)
+``step_size = float``
+  Fixed jump rate for the differential evolution proposal. If not specified, an adaptive jump rate of
+  :math:`2.38/\sqrt{2\delta d'}` is used automatically (recommended). Setting this key explicitly disables
+  adaptive scaling.
 
 ``crossover_number = int``
-  The number of distinct crossover probabilities for performing Gibbs sampling on the parameter set.  Random numbers are generated for each parameter and if they are less than the sampled crossover probability, then a new value is calculated in the updated PSet. Default: 3
+  The number of distinct crossover probabilities for subspace sampling. Defines the set
+  :math:`\{1/n, 2/n, \ldots, 1\}`. Selection probabilities are adapted during the first half of burn-in.
+  Default: 3
 
 ``zeta = float``
-  A (very) small number for perturbing the calculated update for a particular parameter (applies to all parameters).  Default: 1e-6
+  Standard deviation of the small normal perturbation added to each parameter for detailed balance.
+  Default: 1e-6
 
 ``lambda = float``
-  A small number for perturbing parameters selected by the crossover procedure.  Default: 0.1
+  Half-width of the uniform perturbation applied to parameters selected by the crossover procedure.
+  Default: 0.1
 
 ``gamma_prob = float``
-  A probability that determines how often a jump in parameter space is assigned a value of 1 instead of ``step_size``.  Helps with jumping to the mode of the distribution.  Default: 0.1
+  Probability of a mode jump (:math:`\gamma = 1`, all dimensions updated) instead of the standard proposal.
+  Default: 0.1
+
+``archive_size = int``
+  Initial size of the ZS archive (number of random prior draws). Default: :math:`10d` where :math:`d` is
+  the number of free parameters.
+
+``archive_thin_rate = int``
+  Every this many generations, current chain states are appended to the archive.  Default: 10
+
+``snooker_prob = float``
+  Probability of using a snooker update instead of a parallel direction proposal each generation.
+  Default: 0.1
+
+``delta = int``
+  Number of chain pairs used in the differential evolution proposal. Higher values increase proposal
+  diversity at the cost of needing a larger archive. Default: 1
+
+``outlier_method = str``
+  Method for detecting outlier chains during burn-in. Options: ``iqr`` (interquartile range) or
+  ``grubbs`` (Grubbs test at alpha=0.01). Default: ``iqr``
+
+``rhat_threshold = float``
+  If set to a positive value, the algorithm stops automatically once all parameters have
+  :math:`\hat{R}` below this threshold (checked after burn-in). Set to 0 to disable. A common
+  threshold is 1.05. Default: 0 (disabled)
 
 
 
