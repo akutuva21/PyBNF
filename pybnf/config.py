@@ -146,7 +146,8 @@ class Configuration(object):
         self.obj = self._load_obj_func()
         logger.debug('Loaded objective function')
         self.variables = self._load_variables()
-        self._check_variable_correspondence()
+        if self.config['fit_type'] != 'check':
+            self._check_variable_correspondence()
         logger.debug('Loaded variables')
         self._postprocess_normalization()
         self._load_postprocessing()
