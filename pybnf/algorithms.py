@@ -1864,6 +1864,7 @@ class BayesianAlgorithm(Algorithm):
         self.num_parallel = config.config['population_size']
         self.max_iterations = config.config['max_iterations']
         self.step_size = config.config['step_size']
+        self.n_dim = len(self.variables)
 
         self.iteration = [0] * self.num_parallel  # Iteration number that each PSet is on
 
@@ -1884,6 +1885,16 @@ class BayesianAlgorithm(Algorithm):
         self.load_priors()
 
         self.samples_file = self.config.config['output_dir'] + '/Results/samples.txt'
+
+        # Chain history for convergence diagnostics (R-hat, ESS)
+        self.chain_history = [[] for _ in range(self.num_parallel)]
+        self.ln_posterior_history = [[] for _ in range(self.num_parallel)]
+
+        # Convergence threshold (0 = disabled)
+        self.rhat_threshold = config.config['rhat_threshold']
+
+        # Total model evaluations for ESS/evaluation metric
+        self.total_evaluations = 0
 
         # Check that the iteration range is valid with respect to the burnin and or adaptive iterations
         
@@ -2027,6 +2038,240 @@ class BayesianAlgorithm(Algorithm):
         for file in cred_files:
             file.close()
 
+    def _param_vec(self, pset):
+        """Extract parameter values from a PSet as a numpy array in the sampling space."""
+        return np.array([
+            np.log10(pset[v.name]) if v.log_space else pset[v.name]
+            for v in self.variables
+        ])
+
+    @staticmethod
+    def _split_chain_rhat(chains):
+        """
+        Compute the Brooks-Gelman R-hat from an array of chains.
+        chains: (N, n, d) array
+        Returns: (d,) array of R-hat values
+        """
+        N, n, d = chains.shape
+        mu_chains = np.mean(chains, axis=1)
+        s2_chains = np.var(chains, axis=1, ddof=1)
+        B = n * np.var(mu_chains, axis=0, ddof=1)
+        W = np.mean(s2_chains, axis=0)
+        sigma2 = ((n - 1) / n) * W + (1.0 / n) * B
+        with np.errstate(divide='ignore', invalid='ignore'):
+            return np.sqrt((N + 1) / N * (sigma2 / W) - (n - 1) / (N * n))
+
+    def _get_split_chains(self):
+        """
+        Get the split chains used for R-hat and ESS computation.
+        Uses last 50% of each chain, then splits each half in two.
+        Returns (M, n, d) array or None if insufficient data.
+        """
+        min_len = min(len(h) for h in self.chain_history)
+        if min_len < 20:
+            return None
+
+        start = min_len // 2
+        usable = min_len - start
+        half = usable // 2
+        if half < 5:
+            return None
+
+        split_chains = []
+        for j in range(self.num_parallel):
+            chunk = self.chain_history[j][start:start + 2 * half]
+            split_chains.append(chunk[:half])
+            split_chains.append(chunk[half:2 * half])
+        return np.array(split_chains)  # (2N, half, n_dim)
+
+    def compute_rhat(self):
+        """
+        Compute rank-normalized split-R-hat for each parameter (Vehtari, Gelman, Simpson,
+        Carpenter & Burkner, 2021, Bayesian Analysis).
+
+        Steps:
+        1. Split each chain in half (doubles the number of chains, catches within-chain non-stationarity)
+        2. Rank-normalize across all split chains (replaces values with normal scores of their ranks)
+        3. Compute R-hat on both the ranked values and folded ranked values (detects scale differences)
+        4. Return the element-wise maximum
+
+        Returns a numpy array of shape (n_dim,) or None if insufficient data.
+        """
+        chains = self._get_split_chains()
+        if chains is None:
+            return None
+
+        N_split, n, d = chains.shape
+
+        # Rank-normalize each parameter across all split chains
+        ranked = np.empty_like(chains)
+        for p in range(d):
+            flat = chains[:, :, p].ravel()
+            order = flat.argsort()
+            ranks = np.empty_like(order, dtype=float)
+            ranks[order] = np.arange(1, len(flat) + 1)
+            # Transform ranks to normal scores: Phi^{-1}((rank - 3/8) / (S + 1/4))
+            z_scores = stats.norm.ppf((ranks - 0.375) / (len(flat) + 0.25))
+            ranked[:, :, p] = z_scores.reshape(N_split, n)
+
+        # R-hat on ranked values (detects location differences)
+        rhat_rank = self._split_chain_rhat(ranked)
+
+        # Folded R-hat: fold around the median to detect scale differences
+        folded = np.abs(ranked - np.median(ranked, axis=(0, 1), keepdims=True))
+        rhat_fold = self._split_chain_rhat(folded)
+
+        # Return the element-wise max
+        with np.errstate(invalid='ignore'):
+            return np.fmax(rhat_rank, rhat_fold)
+
+    @staticmethod
+    def _ess_from_chains(chains):
+        """
+        Compute effective sample size from an (M, n) array of chains using
+        FFT-based autocovariance and Geyer's initial positive sequence estimator.
+        """
+        M, n = chains.shape
+        if n < 4:
+            return float('nan')
+
+        chain_means = np.mean(chains, axis=1)
+        W = np.mean(np.var(chains, axis=1, ddof=1))
+        B_over_n = np.var(chain_means, ddof=1)
+        var_hat = ((n - 1) / n) * W + B_over_n
+
+        if var_hat < 1e-30:
+            return float(M * n)
+
+        # FFT autocovariance for each chain (biased estimator), averaged across chains
+        npad = 1 << (2 * n - 1).bit_length()
+        mean_acov = np.zeros(n)
+        for m in range(M):
+            x = chains[m] - chain_means[m]
+            xpad = np.zeros(npad)
+            xpad[:n] = x
+            ft = np.fft.rfft(xpad)
+            acov = np.fft.irfft(ft * np.conj(ft))[:n] / n
+            mean_acov += acov
+        mean_acov /= M
+
+        # Combined autocorrelation: rho_t = 1 - (mean_acov[0] - mean_acov[t]) / var_hat
+        # Geyer's initial positive sequence: sum consecutive pairs, stop at first negative pair
+        tau = 0.0
+        t = 1
+        while t < n - 1:
+            rho_t = 1.0 - (mean_acov[0] - mean_acov[t]) / var_hat
+            rho_t1 = 1.0 - (mean_acov[0] - mean_acov[t + 1]) / var_hat
+            P = rho_t + rho_t1
+            if P < 0:
+                break
+            tau += P
+            t += 2
+
+        ess = M * n / max(1.0 + 2.0 * tau, 1.0)
+        return max(ess, 1.0)
+
+    def compute_ess(self):
+        """
+        Compute bulk and tail effective sample size per Vehtari et al. (2021).
+
+        Bulk ESS: computed on rank-normalized values (same transform as R-hat).
+        Tail ESS: minimum ESS of the 5% and 95% quantile indicators.
+
+        Returns (bulk_ess, tail_ess) arrays of shape (n_dim,) or (None, None).
+        """
+        chains = self._get_split_chains()
+        if chains is None:
+            return None, None
+
+        M, n, d = chains.shape
+        bulk_ess = np.zeros(d)
+        tail_ess = np.zeros(d)
+
+        for p in range(d):
+            param_chains = chains[:, :, p]  # (M, n)
+
+            # Bulk ESS: rank-normalize then compute ESS
+            flat = param_chains.ravel()
+            order = flat.argsort()
+            ranks = np.empty_like(order, dtype=float)
+            ranks[order] = np.arange(1, len(flat) + 1)
+            z_scores = stats.norm.ppf((ranks - 0.375) / (len(flat) + 0.25))
+            ranked_chains = z_scores.reshape(M, n)
+            bulk_ess[p] = self._ess_from_chains(ranked_chains)
+
+            # Tail ESS: ESS of quantile indicators
+            q05 = np.quantile(flat, 0.05)
+            q95 = np.quantile(flat, 0.95)
+            ind_low = (param_chains <= q05).astype(float)
+            ind_high = (param_chains >= q95).astype(float)
+            ess_low = self._ess_from_chains(ind_low)
+            ess_high = self._ess_from_chains(ind_high)
+            tail_ess[p] = min(ess_low, ess_high)
+
+        return bulk_ess, tail_ess
+
+    def report_convergence_diagnostics(self, iteration):
+        """
+        Compute and report R-hat, ESS, and ESS/evaluation. Called every 10 iterations.
+        Returns max_rhat for convergence checking, or None.
+        """
+        rhat = self.compute_rhat()
+        max_rhat = None
+        if rhat is not None:
+            max_rhat = np.nanmax(rhat)
+            print1('Max R-hat: %.4f' % max_rhat)
+            print2('R-hat per parameter: %s' % str(np.round(rhat, 4)))
+            logger.info('R-hat values: %s' % str(rhat))
+
+        bulk_ess, tail_ess = self.compute_ess()
+        if bulk_ess is not None:
+            print1('Min bulk ESS: %.1f  Min tail ESS: %.1f' % (np.nanmin(bulk_ess), np.nanmin(tail_ess)))
+            print2('Bulk ESS per parameter: %s' % str(np.round(bulk_ess, 1)))
+            print2('Tail ESS per parameter: %s' % str(np.round(tail_ess, 1)))
+            logger.info('Bulk ESS: %s' % str(bulk_ess))
+            logger.info('Tail ESS: %s' % str(tail_ess))
+
+            if self.total_evaluations > 0:
+                ess_per_eval = bulk_ess / self.total_evaluations
+                print2('Bulk ESS/evaluation: %s' % str(np.round(ess_per_eval, 6)))
+                logger.info('Bulk ESS/evaluation: %s' % str(ess_per_eval))
+
+            # Write diagnostics to file
+            self._write_diagnostics(iteration, rhat, bulk_ess, tail_ess)
+
+        return max_rhat
+
+    def check_convergence(self, iteration, max_rhat):
+        """Check if R-hat has converged below threshold. Returns True if should stop."""
+        if (self.rhat_threshold > 0
+                and iteration > self.burn_in
+                and max_rhat is not None
+                and max_rhat <= self.rhat_threshold):
+            print1('R-hat converged (%.4f <= %.4f). Stopping.' % (max_rhat, self.rhat_threshold))
+            self.update_histograms('_final')
+            return True
+        return False
+
+    def _write_diagnostics(self, iteration, rhat, bulk_ess, tail_ess):
+        """Append convergence diagnostics to the diagnostics output file."""
+        diag_file = self.config.config['output_dir'] + '/Results/diagnostics.txt'
+        write_header = not os.path.exists(diag_file)
+        param_names = [v.name for v in self.variables]
+        with open(diag_file, 'a') as f:
+            if write_header:
+                cols = ['iteration', 'total_evaluations']
+                for name in param_names:
+                    cols.extend(['rhat_%s' % name, 'bulk_ess_%s' % name, 'tail_ess_%s' % name])
+                f.write('# ' + '\t'.join(cols) + '\n')
+            vals = [str(iteration), str(self.total_evaluations)]
+            for i in range(len(param_names)):
+                rhat_val = '%.6f' % rhat[i] if rhat is not None else 'nan'
+                bulk_val = '%.2f' % bulk_ess[i] if bulk_ess is not None else 'nan'
+                tail_val = '%.2f' % tail_ess[i] if tail_ess is not None else 'nan'
+                vals.extend([rhat_val, bulk_val, tail_val])
+            f.write('\t'.join(vals) + '\n')
+
     def cleanup(self):
         """Called when quitting due to error.
         Save the histograms in addition to the usual algorithm cleanup"""
@@ -2045,17 +2290,12 @@ class DreamAlgorithm(BayesianAlgorithm):
 
     def __init__(self, config):
         super(DreamAlgorithm, self).__init__(config)
-        self.n_dim = len(self.variables)
         self.ncr = [(1+x)/self.config.config['crossover_number'] for x in range(self.config.config['crossover_number'])]
         self.ncr_count = len(self.ncr)
         self.g_prob = self.config.config['gamma_prob']
         self.adaptive_step_size = config.config['adaptive_step_size']
         self.acceptances = [0]*self.num_parallel
         self.acceptance_rates = [0.0]*self.num_parallel
-
-        # Chain history for R-hat and outlier detection
-        self.chain_history = [[] for _ in range(self.num_parallel)]
-        self.ln_posterior_history = [[] for _ in range(self.num_parallel)]
 
         # CR adaptation state
         self.cr_probs = np.ones(self.ncr_count) / self.ncr_count
@@ -2082,9 +2322,8 @@ class DreamAlgorithm(BayesianAlgorithm):
         # Multiple chain pairs
         self.delta = config.config['delta']
 
-        # Outlier detection method and convergence threshold
+        # Outlier detection method
         self.outlier_method = config.config['outlier_method']
-        self.rhat_threshold = config.config['rhat_threshold']
 
     def start_run(self, setup_samples=True):
         first_psets = super().start_run(setup_samples)
@@ -2092,13 +2331,6 @@ class DreamAlgorithm(BayesianAlgorithm):
         self.archive = [self.random_pset() for _ in range(self.archive_m0)]
         logger.info('Initialized ZS archive with %d entries (d=%d)' % (self.archive_m0, self.n_dim))
         return first_psets
-
-    def _param_vec(self, pset):
-        """Extract parameter values from a PSet as a numpy array in the sampling space."""
-        return np.array([
-            np.log10(pset[v.name]) if v.log_space else pset[v.name]
-            for v in self.variables
-        ])
 
     def calculate_snooker_pset(self, idx):
         """
@@ -2160,78 +2392,6 @@ class DreamAlgorithm(BayesianAlgorithm):
         log_correction = (self.n_dim - 1) * np.log(dist_xp_zc / dist_x0_zc)
 
         return PSet(new_vars), log_correction
-
-    @staticmethod
-    def _split_chain_rhat(chains):
-        """
-        Compute the Brooks-Gelman R-hat from an array of chains.
-        chains: (N, n, d) array
-        Returns: (d,) array of R-hat values
-        """
-        N, n, d = chains.shape
-        mu_chains = np.mean(chains, axis=1)
-        s2_chains = np.var(chains, axis=1, ddof=1)
-        B = n * np.var(mu_chains, axis=0, ddof=1)
-        W = np.mean(s2_chains, axis=0)
-        sigma2 = ((n - 1) / n) * W + (1.0 / n) * B
-        with np.errstate(divide='ignore', invalid='ignore'):
-            return np.sqrt((N + 1) / N * (sigma2 / W) - (n - 1) / (N * n))
-
-    def compute_rhat(self):
-        """
-        Compute rank-normalized split-R-hat for each parameter (Vehtari, Gelman, Simpson,
-        Carpenter & Burkner, 2021, Bayesian Analysis).
-
-        Steps:
-        1. Split each chain in half (doubles the number of chains, catches within-chain non-stationarity)
-        2. Rank-normalize across all split chains (replaces values with normal scores of their ranks)
-        3. Compute R-hat on both the ranked values and folded ranked values (detects scale differences)
-        4. Return the element-wise maximum
-
-        Returns a numpy array of shape (n_dim,) or None if insufficient data.
-        """
-        min_len = min(len(h) for h in self.chain_history)
-        if min_len < 20:
-            return None
-
-        # Use last 50% of each chain, then split each half in two
-        start = min_len // 2
-        usable = min_len - start
-        half = usable // 2
-        if half < 5:
-            return None
-
-        # Split chains: N chains -> 2N chains of length half
-        split_chains = []
-        for j in range(self.num_parallel):
-            chunk = self.chain_history[j][start:start + 2 * half]
-            split_chains.append(chunk[:half])
-            split_chains.append(chunk[half:2 * half])
-        chains = np.array(split_chains)  # (2N, half, n_dim)
-
-        N_split, n, d = chains.shape
-
-        # Rank-normalize each parameter across all split chains
-        ranked = np.empty_like(chains)
-        for p in range(d):
-            flat = chains[:, :, p].ravel()
-            order = flat.argsort()
-            ranks = np.empty_like(order, dtype=float)
-            ranks[order] = np.arange(1, len(flat) + 1)
-            # Transform ranks to normal scores: Phi^{-1}((rank - 3/8) / (S + 1/4))
-            z_scores = stats.norm.ppf((ranks - 0.375) / (len(flat) + 0.25))
-            ranked[:, :, p] = z_scores.reshape(N_split, n)
-
-        # R-hat on ranked values (detects location differences)
-        rhat_rank = self._split_chain_rhat(ranked)
-
-        # Folded R-hat: fold around the median to detect scale differences
-        folded = np.abs(ranked - np.median(ranked, axis=(0, 1), keepdims=True))
-        rhat_fold = self._split_chain_rhat(folded)
-
-        # Return the element-wise max
-        with np.errstate(invalid='ignore'):
-            return np.fmax(rhat_rank, rhat_fold)
 
     def _detect_outliers_iqr(self, mean_ln_p):
         """IQR outlier detection: chains below Q25 - 2*IQR are outliers."""
@@ -2307,6 +2467,7 @@ class DreamAlgorithm(BayesianAlgorithm):
 
         pset = res.pset
         score = res.score
+        self.total_evaluations += 1
 
         m = re.search('(?<=run)\d+', pset.name)
         index = int(m.group(0))
@@ -2362,20 +2523,9 @@ class DreamAlgorithm(BayesianAlgorithm):
             if self.iteration[index] % 10 == 0:
                 print1('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
                 print2('Acceptance rates: %s\n' % str(self.acceptance_rates))
-                rhat = self.compute_rhat()
-                if rhat is not None:
-                    max_rhat = np.nanmax(rhat)
-                    print1('Max R-hat: %.4f' % max_rhat)
-                    print2('R-hat per parameter: %s' % str(np.round(rhat, 4)))
-                    logger.info('R-hat values: %s' % str(rhat))
-                    # Automatic convergence stop
-                    if (self.rhat_threshold > 0
-                            and self.iteration[index] > self.burn_in
-                            and max_rhat <= self.rhat_threshold):
-                        print1('R-hat converged (%.4f <= %.4f). Stopping.'
-                               % (max_rhat, self.rhat_threshold))
-                        self.update_histograms('_final')
-                        return 'STOP'
+                max_rhat = self.report_convergence_diagnostics(self.iteration[index])
+                if self.check_convergence(self.iteration[index], max_rhat):
+                    return 'STOP'
             else:
                 print2('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
             logger.info('Completed %i iterations' % self.iteration[index])
@@ -2656,6 +2806,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
         self.exchange_accepted = 0
 
         self.staged = []  # Used only when resuming a run and adding iterations
+        self.converged = False  # Set by try_to_choose_new_pset on R-hat convergence
 
     def reset(self, bootstrap=None):
         super(BasicBayesMCMCAlgorithm, self).reset(bootstrap)
@@ -2706,6 +2857,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
 
         pset = res.pset
         score = res.score
+        self.total_evaluations += 1
 
         # Figure out which parallel run this is from based on the .name field.
         m = re.search('(?<=run)\d+', pset.name)
@@ -2739,12 +2891,20 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
                     else:
                         return []
 
+        # Store chain history (after accept/reject, so it reflects the kept state)
+        if self.current_pset[index] is not None:
+            self.chain_history[index].append(self._param_vec(self.current_pset[index]))
+            self.ln_posterior_history[index].append(self.ln_current_P[index])
+
         # Record the current PSet (clarification: what if failed? Sample old again?)
         # Using either the newly accepted PSet or the old PSet, propose the next PSet.
         proposed_pset = self.try_to_choose_new_pset(index)
 
         if proposed_pset is None:
-            if np.all(self.wait_for_sync):
+            if self.converged:
+                print0('Overall move accept rate: %f' % (self.accepted/self.attempts))
+                return 'STOP'
+            elif np.all(self.wait_for_sync):
                 # Do the replica exchange, then propose n new psets so all chains resume
                 self.wait_for_sync = [False] * self.num_parallel
                 return self.replica_exchange()
@@ -2810,6 +2970,12 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
                     print2('Current move accept rate: %f' % (self.accepted/self.attempts))
                     if self.exchange_attempts > 0:
                         print2('Current replica exchange rate: %f' % (self.exchange_accepted / self.exchange_attempts))
+                    # Convergence diagnostics (R-hat, ESS)
+                    if not self.sa:
+                        max_rhat = self.report_convergence_diagnostics(self.iteration[index])
+                        if self.check_convergence(self.iteration[index], max_rhat):
+                            self.converged = True
+                            return None
                 else:
                     print2('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
                 logger.info('Completed %i iterations' % self.iteration[index])
