@@ -434,12 +434,21 @@ def main():
     if args.burn_in is not None:
         overrides['burn_in'] = args.burn_in
 
-    # Run all replicates
+    # Run all replicates (retry failed runs up to max_retries times)
+    max_retries = 3
     run_results = []
     for sampler in args.samplers:
         for rep in range(args.replicates):
-            result = run_sampler(bench_dir, sampler, rep, args.parallel,
-                                 overrides=overrides, timeout=args.timeout)
+            for attempt in range(1, max_retries + 1):
+                result = run_sampler(bench_dir, sampler, rep, args.parallel,
+                                     overrides=overrides, timeout=args.timeout)
+                if result is None:
+                    break  # missing .conf, no point retrying
+                if result.get('success'):
+                    break
+                if attempt < max_retries:
+                    print('  %s rep %d failed (attempt %d/%d), retrying...'
+                          % (sampler, rep, attempt, max_retries))
             if result is not None:
                 run_results.append(result)
 
