@@ -247,6 +247,7 @@ def main():
                 print1("Refining the best fit by the Simplex algorithm")
                 config.config['simplex_start_point'] = alg.trajectory.best_fit()
                 simplex = algs.SimplexAlgorithm(config, refine=True)
+                simplex.model_list = alg.model_list  # Reuse already-generated networks
                 simplex.trajectory = alg.trajectory  # Reuse existing trajectory; don't start a new one.
                 simplex.run(cluster.client, debug=debug)
 
@@ -321,6 +322,7 @@ def main():
                         print1("Refining the best fit by the Simplex algorithm")
                         config.config['simplex_start_point'] = alg.trajectory.best_fit()
                         simplex = algs.SimplexAlgorithm(config, refine=True)
+                        simplex.model_list = alg.model_list  # Reuse already-generated networks
                         simplex.trajectory = alg.trajectory  # Reuse existing trajectory; don't start a new one.
                         simplex.run(cluster.client, debug=debug)
 
