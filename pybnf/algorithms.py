@@ -2654,9 +2654,9 @@ class DreamAlgorithm(BayesianAlgorithm):
         return PSet(new_vars), cr_idx
 
 
-class DreamZSPAlgorithm(DreamAlgorithm):
+class PDreamAlgorithm(DreamAlgorithm):
     """
-    DREAM(ZSP): Preconditioned DREAM with ZS archive.
+    P-DREAM: Preconditioned DREAM.
 
     Extends DREAM(ZS) by computing DE proposals in a covariance-whitened parameter space.
     An online covariance estimate C is learned from the chain history (as in Adaptive Metropolis).
@@ -2672,7 +2672,7 @@ class DreamZSPAlgorithm(DreamAlgorithm):
     """
 
     def __init__(self, config):
-        super(DreamZSPAlgorithm, self).__init__(config)
+        super(PDreamAlgorithm, self).__init__(config)
         pa = config.config['precondition_adapt']
         self.precondition_adapt = pa if pa is not None else self.burn_in // 2
         self._cov_L = None       # Cholesky factor of the covariance estimate
@@ -2707,13 +2707,13 @@ class DreamZSPAlgorithm(DreamAlgorithm):
             self._cov_L_inv = np.linalg.solve(L, np.eye(d))
             if not self._preconditioned:
                 self._preconditioned = True
-                logger.info('DREAM(ZSP): preconditioning activated at iteration %d '
+                logger.info('P-DREAM: preconditioning activated at iteration %d '
                             'with %d pooled samples (d=%d)'
                             % (min(self.iteration), n, d))
             else:
-                logger.debug('DREAM(ZSP): covariance updated with %d samples' % n)
+                logger.debug('P-DREAM: covariance updated with %d samples' % n)
         except np.linalg.LinAlgError:
-            logger.warning('DREAM(ZSP): Cholesky decomposition failed, '
+            logger.warning('P-DREAM: Cholesky decomposition failed, '
                            'skipping covariance update')
 
     def _whiten(self, x_vec):
@@ -2726,7 +2726,7 @@ class DreamZSPAlgorithm(DreamAlgorithm):
 
     def got_result(self, res):
         """Override to update covariance estimate after each generation sync."""
-        result = super(DreamZSPAlgorithm, self).got_result(res)
+        result = super(PDreamAlgorithm, self).got_result(res)
 
         # After a full generation sync with new proposals, update the covariance
         if isinstance(result, list) and len(result) > 0:
@@ -2750,7 +2750,7 @@ class DreamZSPAlgorithm(DreamAlgorithm):
         Before preconditioning activates, falls back to standard DREAM proposals.
         """
         if not self._preconditioned:
-            return super(DreamZSPAlgorithm, self).calculate_new_pset(idx)
+            return super(PDreamAlgorithm, self).calculate_new_pset(idx)
 
         x0 = self.current_pset[idx]
         x0_vec = self._param_vec(x0)
@@ -2818,9 +2818,9 @@ class DreamZSPAlgorithm(DreamAlgorithm):
         return PSet(new_vars), cr_idx
 
 
-class ScreamAlgorithm(DreamAlgorithm):
+class SCreamAlgorithm(DreamAlgorithm):
     """
-    SCREAM: Scatter-search Crossover-based Recombination, Evolution, and Adaptive Metropolis.
+    S-CREAM: Scatter-search Covariance-Rotated Evolutionary Adaptive MCMC.
 
     Replaces DREAM's indiscriminate ZS archive with a scatter-search-inspired curated reference set
     that balances quality (high posterior density) and diversity (geometric spread in parameter space).
@@ -2831,7 +2831,7 @@ class ScreamAlgorithm(DreamAlgorithm):
     """
 
     def __init__(self, config):
-        super(ScreamAlgorithm, self).__init__(config)
+        super(SCreamAlgorithm, self).__init__(config)
         rs = config.config['refset_size']
         self.refset_size = rs if rs is not None else max(2 * self.num_parallel, 10 * self.n_dim)
         self.refset_quality_fraction = config.config['refset_quality_fraction']
@@ -2847,7 +2847,7 @@ class ScreamAlgorithm(DreamAlgorithm):
             self.pool.append((pset, -np.inf))  # unknown posterior
         # Initial reference set = entire pool (before we have posterior info)
         self.archive = [p for p, _ in self.pool]
-        logger.info('SCREAM: initialized pool with %d entries (d=%d)' % (len(self.pool), self.n_dim))
+        logger.info('S-CREAM: initialized pool with %d entries (d=%d)' % (len(self.pool), self.n_dim))
         return first_psets
 
     def _build_refset(self):
@@ -2905,7 +2905,7 @@ class ScreamAlgorithm(DreamAlgorithm):
         self.refset = selected
         self.archive = self.refset  # DreamAlgorithm draws donors from self.archive
         self.refset_built = True
-        logger.info('SCREAM: rebuilt reference set (%d quality + %d diversity) from pool of %d'
+        logger.info('S-CREAM: rebuilt reference set (%d quality + %d diversity) from pool of %d'
                      % (b1, len(self.refset) - b1, len(self.pool)))
 
     def got_result(self, res):
@@ -2925,7 +2925,7 @@ class ScreamAlgorithm(DreamAlgorithm):
         self.pool.append((pset, lnposterior))
 
         # Delegate to DreamAlgorithm.got_result for MH acceptance etc.
-        result = super(ScreamAlgorithm, self).got_result(res)
+        result = super(SCreamAlgorithm, self).got_result(res)
 
         # After a full generation sync, rebuild the reference set.
         # Must rebuild every sync to counteract the parent's archive append.

@@ -1,6 +1,6 @@
 # MCMC Sampler Comparison Roadmap
 
-Compare the three Bayesian samplers in PyBNF: Adaptive MCMC (`am`), DREAM(ZS) (`dream`), and SCREAM (`scream`).
+Compare the three Bayesian samplers in PyBNF: Adaptive MCMC (`am`), DREAM(ZS) (`dream`), and S-CREAM (`s_cream`).
 
 ## Phase 1: Infrastructure
 
@@ -23,7 +23,7 @@ Build lightweight test models that compute score directly from parameters (no Bi
 - [x] **Banana (Rosenbrock)**: correlated curved posterior
   - Tests sampling along non-linear ridges
 - [x] **Multimodal mixture**: 2-3 separated Gaussian modes with known weights
-  - Tests mode-jumping; where snooker and SCREAM diversity should help
+  - Tests mode-jumping; where snooker and S-CREAM diversity should help
 - [x] Each target needs: trivial `.bngl` or direct-score model, `.conf` files for all 3 samplers, ground truth file with analytical moments
 
 ## Phase 3: Benchmark Harness
@@ -36,7 +36,7 @@ Build lightweight test models that compute score directly from parameters (no Bi
 ## Phase 4: Experiments
 
 All experiment configs and the master runner are ready in `benchmarks/`.
-Samplers: `am`, `dream` (ZS), `dream_zsp` (preconditioned ZS), `scream` (curated ZS).
+Samplers: `am`, `dream` (ZS), `p_dream` (preconditioned ZS), `s_cream` (curated ZS).
 Run: `python benchmarks/run_all_experiments.py --replicates 5 --skip-egfr`
 Or specific experiments: `python benchmarks/run_all_experiments.py -e 1 2`
 
@@ -57,6 +57,6 @@ Or specific experiments: `python benchmarks/run_all_experiments.py -e 1 2`
 ## Phase 5: Analysis and Write-up
 
 - [ ] Summarize results: which sampler wins where, and why
-- [ ] Identify failure modes (e.g., does SCREAM's curation hurt in some regimes?)
+- [ ] Identify failure modes (e.g., does S-CREAM's curation hurt in some regimes?)
 - [ ] Update documentation with recommendations
-- [ ] Consider writing up SCREAM as a methods paper if results are promising
+- [ ] Consider writing up S-CREAM as a methods paper if results are promising

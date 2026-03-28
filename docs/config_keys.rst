@@ -1052,10 +1052,10 @@ For DREAM
   :math:`\hat{R}` below this threshold (checked after burn-in). Set to 0 to disable. A common
   threshold is 1.05. Default: 0 (disabled)
 
-For SCREAM
-""""""""""
+For S-CREAM
+"""""""""""
 
-SCREAM accepts all DREAM configuration keys above, plus the following:
+S-CREAM accepts all DREAM configuration keys above, plus the following:
 
 ``refset_size = int``
   Total size of the curated reference set. Larger values provide more proposal diversity but increase

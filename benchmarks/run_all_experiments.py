@@ -108,7 +108,7 @@ def print_scaling_table(dimensions):
         for r in results:
             by_sampler.setdefault(r['sampler'], []).append(r)
 
-        for sampler in ['am', 'dream', 'dream_zsp', 'scream']:
+        for sampler in ['am', 'dream', 'p_dream', 's_cream']:
             runs = [r for r in by_sampler.get(sampler, []) if r.get('success')]
             if not runs:
                 print('d=%-4d %-8s  no successful runs' % (d, sampler))
@@ -152,7 +152,7 @@ def print_summary():
         true_mean = np.array(gt['posterior_mean'])
         true_std = np.array(gt['posterior_std'])
 
-        for sampler in ['am', 'dream', 'dream_zsp', 'scream']:
+        for sampler in ['am', 'dream', 'p_dream', 's_cream']:
             runs = [r for r in results if r['sampler'] == sampler and r.get('success')]
             if not runs:
                 continue
@@ -172,7 +172,7 @@ def print_summary():
     # --- Experiment 2: Efficiency (low-d) ---
     print('\n--- Experiment 2: Efficiency (Gaussian d=5, ESS/eval) ---')
     if results:
-        for sampler in ['am', 'dream', 'dream_zsp', 'scream']:
+        for sampler in ['am', 'dream', 'p_dream', 's_cream']:
             runs = [r for r in results if r['sampler'] == sampler and r.get('success')]
             ess_eval = [r['min_ess_per_eval'] for r in runs
                         if 'min_ess_per_eval' in r and np.isfinite(r['min_ess_per_eval'])]
@@ -197,7 +197,7 @@ def print_summary():
     print('\n--- Experiment 4: Correlated target (Banana) ---')
     results = load_results('banana')
     if results:
-        for sampler in ['am', 'dream', 'dream_zsp', 'scream']:
+        for sampler in ['am', 'dream', 'p_dream', 's_cream']:
             runs = [r for r in results if r['sampler'] == sampler and r.get('success')]
             if not runs:
                 continue
@@ -216,7 +216,7 @@ def print_summary():
     print('\n--- Experiment 5: Multimodal target (Mixture of Gaussians) ---')
     results = load_results('multimodal')
     if results:
-        for sampler in ['am', 'dream', 'dream_zsp', 'scream']:
+        for sampler in ['am', 'dream', 'p_dream', 's_cream']:
             runs = [r for r in results if r['sampler'] == sampler and r.get('success')]
             if not runs:
                 continue
@@ -236,7 +236,7 @@ def print_summary():
     print('\n--- Experiment 6: Real-world EGFR (d=37) ---')
     results = load_results('egfr')
     if results:
-        for sampler in ['am', 'dream', 'dream_zsp', 'scream']:
+        for sampler in ['am', 'dream', 'p_dream', 's_cream']:
             runs = [r for r in results if r['sampler'] == sampler and r.get('success')]
             if not runs:
                 continue

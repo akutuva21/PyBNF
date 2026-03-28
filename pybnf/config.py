@@ -124,7 +124,7 @@ class Configuration(object):
             d = self.check_unused_keys_model_checking(d)
         elif verbosity >= 1:
             self.check_unused_keys(d)
-        if d['fit_type'] in ('mh', 'pt', 'sa', 'dream', 'dream_zsp', 'scream', 'am'):
+        if d['fit_type'] in ('mh', 'pt', 'sa', 'dream', 'p_dream', 's_cream', 'am'):
             self.postprocess_mcmc_keys(d)
         self.config = self.default_config()
         for k, v in d.items():
@@ -241,7 +241,7 @@ class Configuration(object):
                         }
         ignored_params = set()
         thisalg = conf_dict['fit_type']
-        if thisalg in ('pt', 'sa', 'dream', 'dream_zsp', 'scream', 'am'):
+        if thisalg in ('pt', 'sa', 'dream', 'p_dream', 's_cream', 'am'):
             thisalg = 'mh'
         for alg in alg_specific:
             if (thisalg != alg

@@ -151,12 +151,12 @@ def _make_pt(seed):
         'fit_type': 'pt', 'output_dir': 'test_seed_pt'})
 
 
-def _make_dream_zsp(seed):
-    return _make_algo(seed, algorithms.DreamZSPAlgorithm, {
+def _make_p_dream(seed):
+    return _make_algo(seed, algorithms.PDreamAlgorithm, {
         'population_size': 6, 'max_iterations': 20, 'step_size': 0.2,
         'output_hist_every': 100, 'sample_every': 2, 'burn_in': 100,
         'credible_intervals': [68, 95], 'num_bins': 10,
-        'fit_type': 'dream_zsp', 'output_dir': 'test_seed_dream_zsp'})
+        'fit_type': 'p_dream', 'output_dir': 'test_seed_p_dream'})
 
 
 def _make_am(seed):
@@ -209,7 +209,7 @@ def _make_simplex(seed):
 OUTPUT_DIRS = [
     'test_seed_pso', 'test_seed_de', 'test_seed_ade', 'test_seed_ss',
     'test_seed_dream', 'test_seed_mh', 'test_seed_pt',
-    'test_seed_dream_zsp', 'test_seed_am', 'test_seed_simplex',
+    'test_seed_p_dream', 'test_seed_am', 'test_seed_simplex',
 ]
 
 
@@ -328,14 +328,14 @@ class TestSeedReproducibility:
         assert len(proposals1) == len(proposals2) > 0
         assert _proposal_fingerprint(proposals1) == _proposal_fingerprint(proposals2)
 
-    def test_dream_zsp_seed_reproducibility(self):
+    def test_p_dream_seed_reproducibility(self):
         scores = [42.] * 6
         order = list(range(6))
 
-        algo1, psets1 = _make_dream_zsp(seed=99)
+        algo1, psets1 = _make_p_dream(seed=99)
         proposals1 = _feed_results(algo1, psets1, scores, order)
 
-        algo2, psets2 = _make_dream_zsp(seed=99)
+        algo2, psets2 = _make_p_dream(seed=99)
         proposals2 = _feed_results(algo2, psets2, scores, order)
 
         assert len(proposals1) == len(proposals2) > 0
@@ -534,16 +534,16 @@ class TestResultOrderDependence:
         assert len(proposals_rev) > 0
         assert _proposal_fingerprint(proposals_fwd) != _proposal_fingerprint(proposals_rev)
 
-    def test_dream_zsp_order_dependent(self):
+    def test_p_dream_order_dependent(self):
         """DREAM(ZSP) inherits DREAM's per-result MH acceptance draw."""
         scores = [42.] * 6
         forward = list(range(6))
         reverse = list(reversed(range(6)))
 
-        algo1, psets1 = _make_dream_zsp(seed=99)
+        algo1, psets1 = _make_p_dream(seed=99)
         proposals_fwd = _feed_results(algo1, psets1, scores, forward)
 
-        algo2, psets2 = _make_dream_zsp(seed=99)
+        algo2, psets2 = _make_p_dream(seed=99)
         proposals_rev = _feed_results(algo2, psets2, scores, reverse)
 
         assert len(proposals_fwd) > 0

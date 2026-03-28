@@ -377,23 +377,23 @@ chains.  Two detection methods are available via the ``outlier_method`` key:
 - ``grubbs``: Applies the Grubbs test at significance level :math:`\alpha = 0.01` to detect a single minimum outlier.
 
 
-.. _alg-scream:
+.. _alg-s-cream:
 
-SCREAM
-------
+S-CREAM
+-------
 
 Algorithm
 ^^^^^^^^^
-**S**\ catter-search **C**\ rossover-based **R**\ ecombination, **E**\ volution, and **A**\ daptive **M**\ etropolis
-(SCREAM) is a novel MCMC sampler that extends :ref:`DREAM <alg-dream>` by replacing its indiscriminate ZS archive with
-a scatter-search-inspired curated reference set.  SCREAM inherits all DREAM features (adaptive gamma, subspace
+**S**\ catter-search **C**\ ovariance-\ **R**\ otated **E**\ volutionary **A**\ daptive **M**\ CMC
+(S-CREAM) is a novel MCMC sampler that extends :ref:`DREAM <alg-dream>` by replacing its indiscriminate ZS archive with
+a scatter-search-inspired curated reference set.  S-CREAM inherits all DREAM features (adaptive gamma, subspace
 sampling with CR adaptation, snooker updates, rank-normalized :math:`\hat{R}` diagnostics, outlier detection, and
 automatic convergence stop).
 
 Motivation
 ^^^^^^^^^^
 In DREAM(ZS), the external archive accumulates all past chain states, including many low-quality states from early
-burn-in.  As the archive grows, proposals drawing from it become increasingly diluted.  SCREAM addresses this by
+burn-in.  As the archive grows, proposals drawing from it become increasingly diluted.  S-CREAM addresses this by
 maintaining a curated reference set that balances two objectives:
 
 - **Quality**: States with the highest posterior density provide well-targeted proposal donors.
@@ -405,7 +405,7 @@ this quality-diversity decomposition.
 
 Reference set construction
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
-SCREAM maintains a pool of all evaluated states (with their log-posterior values) and periodically rebuilds a reference
+S-CREAM maintains a pool of all evaluated states (with their log-posterior values) and periodically rebuilds a reference
 set of fixed size ``refset_size`` (default :math:`\max(2N, 10d)` where :math:`N` is the number of chains and :math:`d`
 the number of parameters):
 
@@ -426,7 +426,7 @@ reference set constitutes diminishing adaptation, preserving ergodicity.
 
 Configuration
 ^^^^^^^^^^^^^
-SCREAM is selected with ``fit_type = scream`` and accepts all :ref:`DREAM configuration keys <alg-dream>` plus:
+S-CREAM is selected with ``fit_type = s_cream`` and accepts all :ref:`DREAM configuration keys <alg-dream>` plus:
 
 ``refset_size = int``
   Total size of the curated reference set.  Default: :math:`\max(2N, 10d)`.
