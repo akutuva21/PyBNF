@@ -66,7 +66,7 @@ def init_logging(file_prefix, debug=False, log_level_name='info'):
 
     talog = logging.getLogger('tornado.application')
     talog.handlers[:] = []
-    talog.setLevel(max(logging.ERROR, log_level))
+    talog.setLevel(logging.CRITICAL)
     talog.addHandler(fh)
 
     asynclog = logging.getLogger('asyncio')
