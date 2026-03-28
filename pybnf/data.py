@@ -148,7 +148,7 @@ class Data(object):
         :type sep: str
         :return: None
         """
-        with open(file_name) as f:
+        with open(file_name, encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
 
         self.data = self._read_file_lines(lines, sep, file_name=file_name)

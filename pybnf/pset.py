@@ -148,7 +148,7 @@ class BNGLModel(Model):
         self.bng_command = ''
 
         # Read the file
-        with open(self.file_path) as file:
+        with open(self.file_path, encoding='utf-8', errors='replace') as file:
             self.bngl_file_text = file.read()
 
         # Scan the file's lines
@@ -530,7 +530,7 @@ class NetModel(BNGLModel):
             self.netfile_lines = ls
         else:
             self.file_name = nf
-            with open(self.file_name) as f:
+            with open(self.file_name, encoding='utf-8', errors='replace') as f:
                 self.netfile_lines = f.readlines()
 
     def copy_with_param_set(self, pset):
@@ -1412,7 +1412,7 @@ class Trajectory(object):
         """Loads a Trajectory from file given Algorithm.variables information"""
 
         logger.info('Loading trajectory from %s' % filename)
-        with open(filename) as f:
+        with open(filename, encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
         if len(lines) == 0:
             raise IOError('Empty parameters file %s' % filename)
