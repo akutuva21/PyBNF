@@ -27,7 +27,7 @@ class TestFreeParameter:
         assert not self.p0.bounded
 
         assert not self.p1.bounded
-        assert self.p1.lower_bound == 0.0
+        assert self.p1.lower_bound == -np.inf
         assert np.isinf(self.p1.upper_bound)
 
         assert self.p2.upper_bound == 100
@@ -45,7 +45,7 @@ class TestFreeParameter:
         for x in xs:
             assert self.p3.lower_bound <= x < self.p3.upper_bound
         ys = [self.p0.sample_value().value for x in range(100000)]
-        assert np.all(np.array(ys)>=0.0)
+        assert np.any(np.array(ys) < 0.0)  # normal_var centered at 0 should produce negative values
 
     def test_sample_value(self):
         p0s = self.p0.sample_value()

@@ -982,7 +982,7 @@ class FreeParameter(object):
         self.p2 = p2
         self.bounded = bounded if re.search('uniform', self.type) else False
 
-        self.lower_bound = 0.0 if not self.bounded else self.p1
+        self.lower_bound = -np.inf if not self.bounded else self.p1
         self.upper_bound = np.inf if not self.bounded else self.p2
 
         if self.lower_bound > self.upper_bound:
