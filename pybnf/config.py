@@ -124,7 +124,7 @@ class Configuration(object):
             d = self.check_unused_keys_model_checking(d)
         elif verbosity >= 1:
             self.check_unused_keys(d)
-        if d['fit_type'] in ('mh', 'pt', 'sa', 'dream', 'scream', 'am'):
+        if d['fit_type'] in ('mh', 'pt', 'sa', 'dream', 'dream_zsp', 'scream', 'am'):
             self.postprocess_mcmc_keys(d)
         self.config = self.default_config()
         for k, v in d.items():
@@ -211,7 +211,8 @@ class Configuration(object):
             'outlier_method': 'iqr',
             'rhat_threshold': 0.0,
             'refset_size': None,
-            'refset_quality_fraction': 0.5
+            'refset_quality_fraction': 0.5,
+            'precondition_adapt': None
         }
         return default
 
@@ -232,14 +233,15 @@ class Configuration(object):
                                 'crossover_number', 'zeta', 'lambda', 'gamma_prob', 'adaptive', 'time_length',
                                 'archive_size', 'archive_thin_rate', 'snooker_prob',
                                 'delta', 'outlier_method', 'rhat_threshold',
-                                'refset_size', 'refset_quality_fraction'},
+                                'refset_size', 'refset_quality_fraction',
+                                'precondition_adapt'},
                         'sim': {'simplex_step', 'simplex_log_step', 'simplex_reflection', 'simplex_expansion',
                                 'simplex_contraction', 'simplex_shrink', 'simplex_max_iterations',
                                 'simplex_stop_tol'}
                         }
         ignored_params = set()
         thisalg = conf_dict['fit_type']
-        if thisalg in ('pt', 'sa', 'dream', 'scream', 'am'):
+        if thisalg in ('pt', 'sa', 'dream', 'dream_zsp', 'scream', 'am'):
             thisalg = 'mh'
         for alg in alg_specific:
             if (thisalg != alg

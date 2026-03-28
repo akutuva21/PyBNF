@@ -36,10 +36,11 @@ Build lightweight test models that compute score directly from parameters (no Bi
 ## Phase 4: Experiments
 
 All experiment configs and the master runner are ready in `benchmarks/`.
+Samplers: `am`, `dream` (ZS), `dream_zsp` (preconditioned ZS), `scream` (curated ZS).
 Run: `python benchmarks/run_all_experiments.py --replicates 5 --skip-egfr`
 Or specific experiments: `python benchmarks/run_all_experiments.py -e 1 2`
 
-- [ ] **Correctness**: all 3 samplers on multivariate Gaussian, verify sampled moments match truth
+- [ ] **Correctness**: all 4 samplers on multivariate Gaussian, verify sampled moments match truth
   - Config: `benchmarks/gaussian_d5/`, run with `run_benchmark.py gaussian_d5`
 - [ ] **Efficiency (low-d)**: Gaussian d=5, compare ESS/evaluation across samplers
   - Same run as Correctness — both metrics extracted from `gaussian_d5`

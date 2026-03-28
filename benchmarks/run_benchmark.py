@@ -22,7 +22,7 @@ import time
 
 import numpy as np
 
-SAMPLERS = ['am', 'dream', 'scream']
+SAMPLERS = ['am', 'dream', 'dream_zsp', 'scream']
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +324,7 @@ def plot_convergence(all_metrics, output_path):
         print('No trajectory data available for plotting')
         return
 
-    colors = {'am': '#1f77b4', 'dream': '#ff7f0e', 'scream': '#2ca02c'}
+    colors = {'am': '#1f77b4', 'dream': '#ff7f0e', 'dream_zsp': '#d62728', 'scream': '#2ca02c'}
 
     fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
