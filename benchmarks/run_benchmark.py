@@ -91,8 +91,22 @@ def run_sampler(bench_dir, sampler, replicate, parallel=None, overrides=None,
     print('  %s rep %d ...' % (sampler, replicate), end=' ', flush=True)
     elapsed, success = run_single(conf_patched, cwd=bench_dir, parallel=parallel,
                                    timeout=timeout)
+
+    # Validate that the run actually produced samples (guards against silent
+    # early termination, e.g. job pool exhaustion from all-out-of-bounds proposals)
     if success:
-        print('%.1fs' % elapsed)
+        samples_file = os.path.join(run_output_dir, 'output', 'Results', 'samples.txt')
+        if os.path.isfile(samples_file):
+            with open(samples_file) as f:
+                n_lines = sum(1 for _ in f)
+            if n_lines <= 1:  # header only, no data
+                print('EMPTY (no samples produced in %.1fs)' % elapsed)
+                success = False
+            else:
+                print('%.1fs' % elapsed)
+        else:
+            print('EMPTY (no samples.txt in %.1fs)' % elapsed)
+            success = False
     return {'sampler': sampler, 'replicate': replicate, 'wall_clock': elapsed,
             'success': success, 'output_dir': run_output_dir + '/output'}
 

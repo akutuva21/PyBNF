@@ -2520,7 +2520,10 @@ class DreamAlgorithm(BayesianAlgorithm):
             self.update_histograms('_%i' % self.iteration[index])
 
         # Wait for entire generation to finish
-        if np.all(self.wait_for_sync):
+        # Loop handles the case where all proposals are out of bounds: advance
+        # the generation counter and try again instead of returning an empty
+        # list (which would exhaust the job pool and silently end the run).
+        while np.all(self.wait_for_sync):
 
             self.wait_for_sync = [False] * self.num_parallel
 
@@ -2590,6 +2593,12 @@ class DreamAlgorithm(BayesianAlgorithm):
                     logger.debug('Proposed PSet %s is invalid.  Rejecting and waiting until next iteration' % i)
                     self.wait_for_sync[i] = True
                     self.iteration[i] += 1
+
+            if not next_gen:
+                logger.warning('All %d proposals were out of bounds at iteration %d. '
+                               'Advancing to next generation.'
+                               % (self.num_parallel, min(self.iteration)))
+                continue
 
             return next_gen
 
