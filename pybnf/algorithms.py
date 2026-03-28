@@ -6,6 +6,7 @@ from distributed import as_completed
 from subprocess import run
 from subprocess import CalledProcessError, TimeoutExpired
 from subprocess import STDOUT
+from .pset import run_subprocess
 
 from numpy.core.fromnumeric import mean
 
@@ -573,7 +574,7 @@ class Algorithm(object):
                 try:
                     with open('%s.log' % gnm_name, 'w') as lf:
                         print2('Generating network for model %s.bngl' % gnm_name)
-                        run(gn_cmd, check=True, stderr=STDOUT, stdout=lf, timeout=self.config.config['wall_time_gen'])
+                        run_subprocess(gn_cmd, timeout=self.config.config['wall_time_gen'], stdout=lf, stderr=STDOUT)
                 except CalledProcessError as c:
                     logger.error("Command %s failed in directory %s" % (gn_cmd, os.getcwd()))
                     logger.error(c.stdout)

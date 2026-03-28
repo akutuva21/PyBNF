@@ -7,7 +7,8 @@ import logging
 import numpy as np
 import re
 import copy
-from subprocess import run, STDOUT, PIPE, DEVNULL
+import signal
+from subprocess import run, Popen, STDOUT, PIPE, DEVNULL, CalledProcessError, TimeoutExpired
 from .data import Data
 import heapq
 import traceback
@@ -21,6 +22,46 @@ ROOT_DIRECTORY = join(dirname(abspath(__file__)), '..')
 rr.Logger.disableLogging()
 
 logger = logging.getLogger(__name__)
+
+
+def run_subprocess(cmd, timeout, stdout=None, stderr=None, input=None):
+    """
+    Run a subprocess with process-group-based cleanup on timeout.
+
+    Uses start_new_session=True so that on timeout, the entire process group
+    (including any grandchild processes) is killed via os.killpg(). This prevents
+    zombie processes when e.g. run_network spawns children that outlive the parent.
+
+    On Windows, falls back to proc.kill() (no process group support).
+
+    :param cmd: Command to run (list of strings)
+    :param timeout: Timeout in seconds, or None for no timeout
+    :param stdout: File object or subprocess constant for stdout
+    :param stderr: File object or subprocess constant for stderr
+    :param input: Bytes to send to stdin, or None
+    :raises CalledProcessError: If the subprocess exits with non-zero return code
+    :raises TimeoutExpired: If the subprocess exceeds the timeout
+    :return: stdout bytes if stdout=PIPE, else None
+    """
+    use_pgid = (os.name != 'nt')
+    proc = Popen(cmd, stdout=stdout, stderr=stderr,
+                 stdin=PIPE if input is not None else None,
+                 start_new_session=use_pgid)
+    try:
+        stdout_data, _ = proc.communicate(input=input, timeout=timeout)
+    except TimeoutExpired:
+        if use_pgid:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            proc.kill()
+        proc.wait()
+        raise
+    if proc.returncode != 0:
+        raise CalledProcessError(proc.returncode, cmd)
+    return stdout_data
 
 
 class Model(object):
@@ -390,7 +431,7 @@ class BNGLModel(Model):
             # Explicitly call perl because the #! line in BNG2.pl is not supported.
             cmd = ['perl'] + cmd
         with open(log_file, 'w') as lf:
-            run(cmd, check=True, stderr=STDOUT, stdout=lf, timeout=timeout)
+            run_subprocess(cmd, timeout=timeout, stdout=lf, stderr=STDOUT)
 
         # Load the data file(s)
         ds = self._load_simdata(folder, filename)
@@ -740,8 +781,9 @@ class SbmlModel(SbmlModelNoTimeout):
         self.curr_file = filename
         arg = pickle.dumps(self)
         with open('%s/%s.log' % (folder, filename), 'w') as errout:
-            proc_output = run([executable, ROOT_DIRECTORY + '/sbml_runner.py'], timeout=timeout, stdout=PIPE, check=True, input=arg, stderr=errout)
-        result = pickle.loads(proc_output.stdout)
+            stdout_data = run_subprocess([executable, ROOT_DIRECTORY + '/sbml_runner.py'],
+                                         timeout=timeout, stdout=PIPE, stderr=errout, input=arg)
+        result = pickle.loads(stdout_data)
         return result
 
     def super_execute(self):
