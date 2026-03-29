@@ -11,7 +11,7 @@
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-ALL_PROBLEMS="Banana Gaussian_d10 Multimodal LinearRegression HIVdynamics COVID19_BigApple Degranulation EGFR_d10 EGFR_d37"
+ALL_PROBLEMS="Banana Gaussian_d10 Multimodal LinearRegression HIVdynamics COVID19_BigApple Degranulation TCR FcERI_gamma MEK_Isoforms EGFR_d10 EGFR_d37"
 ALL_SAMPLERS="am dream p_dream s_cream"
 PROBLEMS=""
 SAMPLERS=""

@@ -18,6 +18,9 @@ Systematic comparison of four Bayesian MCMC samplers in PyBNF:
 | HIV dynamics | `HIVdynamics/` | 5 | BNG (fast) | chi_sq_dynamic | 100,000 | 50,000 | 20 |
 | COVID-19 BigApple | `COVID19_BigApple/` | 10 | BNG (moderate) | neg_bin_dynamic | 100,000 | 50,000 | 20 |
 | Degranulation | `Degranulation/` | 16 | BNG (moderate) | chi_sq | 50,000 | 25,000 | 20 |
+| TCR signaling | `TCR/` | 34 | BNG/NFSim (slow) | chi_sq | 10,000 | 5,000 | 20 |
+| FcERI-gamma | `FcERI_gamma/` | 20 | BNG/SSA (stochastic) | sos | 50,000 | 25,000 | 20 |
+| MEK Isoforms | `MEK_Isoforms/` | 6 | BNG (multi-model) | chi_sq_dynamic | 100,000 | 50,000 | 20 |
 | EGFR reduced | `EGFR_d10/` | 10 | BNG (slow) | ave_norm_sos | 10,000 | 5,000 | 20 |
 | EGFR full | `EGFR_d37/` | 37 | BNG (slow) | ave_norm_sos | 10,000 | 5,000 | 20 |
 
@@ -271,6 +274,9 @@ pybnf -r 0 -c am.conf                 # Resume interrupted run to original max_i
 | LinearRegression, HIVdynamics | ~1 day | 32 GB |
 | COVID19_BigApple | ~2-3 days | 60 GB |
 | Degranulation | ~3-4 days | 100 GB |
+| TCR | ~3-5 days | 60 GB |
+| FcERI_gamma | ~3-4 days | 60 GB |
+| MEK_Isoforms | ~2-3 days | 60 GB |
 | EGFR_d10 | ~1-2 days | 60 GB |
 | EGFR_d37 | ~3-5 days | 60 GB |
 
@@ -287,4 +293,7 @@ These are rough estimates. Actual times depend on cluster hardware and load.
 | HIV dynamics (pt303) | `examples/HIVdynamics_aMCMC/` | Perelson et al. 1996; Ho et al. 1995 |
 | COVID-19 BigApple | `examples/COVID19forecasting_aMCMC/` | Lin et al. 2021, Emerg. Inf. Dis. |
 | Degranulation | `examples/Degranulation_aMCMC/` | Harmon et al. 2017, Sci. Rep. |
+| TCR signaling | `examples/tcr/` | Chylek et al. (Supplementary File A) |
+| FcERI-gamma | `examples/fceri_gamma/` | Gupta & Mendes 2018, Computation |
+| MEK Isoforms | `examples/Miller2025_MEK_Isoforms/` | Miller et al. 2025 |
 | EGFR (d=10, d=37) | `benchmarks/egfr/`, `benchmarks/egfr_d10/` | Blinov et al. 2006, Biosystems |

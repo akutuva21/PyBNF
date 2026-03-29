@@ -22,7 +22,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 ALL_PROBLEMS = [
     "Banana", "Gaussian_d10", "Multimodal", "LinearRegression",
-    "HIVdynamics", "COVID19_BigApple", "Degranulation", "EGFR_d10", "EGFR_d37",
+    "HIVdynamics", "COVID19_BigApple", "Degranulation",
+    "TCR", "FcERI_gamma", "MEK_Isoforms",
+    "EGFR_d10", "EGFR_d37",
 ]
 ALL_SAMPLERS = ["am", "dream", "p_dream", "s_cream"]
 
@@ -38,7 +40,8 @@ def build_local_command(conf_file, uses_bng=False):
 
 # Problems that require BioNetGen (and thus benefit from -t SLURM)
 BNG_PROBLEMS = {"LinearRegression", "HIVdynamics", "COVID19_BigApple",
-                "Degranulation", "EGFR_d10", "EGFR_d37"}
+                "Degranulation", "TCR", "FcERI_gamma", "MEK_Isoforms",
+                "EGFR_d10", "EGFR_d37"}
 
 
 def main():
