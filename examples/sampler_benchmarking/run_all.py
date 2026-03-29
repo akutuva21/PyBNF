@@ -15,7 +15,6 @@ Usage:
 
 import argparse
 import os
-import re
 import subprocess
 import sys
 
@@ -28,21 +27,18 @@ ALL_PROBLEMS = [
 ALL_SAMPLERS = ["am", "dream", "p_dream", "s_cream"]
 
 
-def parse_pybnf_command(script_path):
-    """Extract the pybnf command line from a SLURM script."""
-    with open(script_path) as f:
-        for line in f:
-            line = line.strip()
-            # Skip comments, blank lines, and SBATCH directives
-            if not line or line.startswith("#"):
-                continue
-            # Skip module/source/conda lines
-            if any(line.startswith(k) for k in ("module ", "source ", "conda ")):
-                continue
-            # Should be the pybnf command
-            if "pybnf" in line:
-                return line
-    return None
+def build_local_command(conf_file, uses_bng=False):
+    """Build the pybnf command for local (non-SLURM) execution."""
+    # Analytical targets don't need -t SLURM; BNG models do for parallelism
+    if uses_bng:
+        return f"pybnf -c {conf_file} -t SLURM -o"
+    else:
+        return f"pybnf -c {conf_file} -o"
+
+
+# Problems that require BioNetGen (and thus benefit from -t SLURM)
+BNG_PROBLEMS = {"LinearRegression", "HIVdynamics", "COVID19_BigApple",
+                "Degranulation", "EGFR_d10", "EGFR_d37"}
 
 
 def main():
@@ -101,12 +97,14 @@ def main():
                 print(f"  WARNING: {prob}/run_{samp}.sh not found, skipping.")
                 continue
 
+            uses_bng = prob in BNG_PROBLEMS
+
             if args.dry_run:
                 if args.local:
                     if args.resume is not None:
                         cmd = f"pybnf -r {args.resume} -c {samp}.conf"
                     else:
-                        cmd = parse_pybnf_command(script) or f"pybnf -c {samp}.conf -o"
+                        cmd = build_local_command(f"{samp}.conf", uses_bng)
                     print(f"  [DRY RUN] Would run in {prob}/: {cmd}")
                 else:
                     if args.resume is not None:
@@ -120,11 +118,7 @@ def main():
                 if args.resume is not None:
                     cmd = f"pybnf -r {args.resume} -c {samp}.conf"
                 else:
-                    # Extract the pybnf command from the script and run it directly
-                    cmd = parse_pybnf_command(script)
-                    if cmd is None:
-                        print(f"  WARNING: Could not parse pybnf command from {prob}/run_{samp}.sh, skipping.")
-                        continue
+                    cmd = build_local_command(f"{samp}.conf", uses_bng)
                 print(f"  Running {prob} / {samp}: {cmd}")
                 try:
                     subprocess.run(

@@ -49,6 +49,16 @@ def colorize(text, color, use_color=True):
     return f"{color}{text}{COLOR_RESET}"
 
 
+def pad_colored(text, width, use_color=True):
+    """Pad text to width, accounting for invisible ANSI escape sequences."""
+    if not use_color:
+        return f"{text:<{width}}"
+    # Strip ANSI codes to measure visible length
+    visible = re.sub(r'\033\[[0-9;]*m', '', text)
+    padding = max(0, width - len(visible))
+    return text + ' ' * padding
+
+
 def parse_diagnostics(output_dir):
     """Parse diagnostics.txt and return a dict with summary statistics.
 
@@ -264,10 +274,12 @@ def print_results_table(results, use_color=True):
             evals_str = str(r["total_evaluations"]) if r["total_evaluations"] is not None else "---"
             time_str = r["wall_time_fmt"]
 
-            # Note: ANSI codes mess up alignment, so we pad based on visible width
-            # Use fixed-width formatting for non-colored fields
             label = r["sampler_label"]
-            print(f"  {label:<12} {status_str:<18} {rhat_str:<12} {ess_str:<14} {evals_str:<10} {time_str:<8}")
+            # Use ANSI-aware padding for colored fields
+            print(f"  {label:<12} "
+                  f"{pad_colored(status_str, 18, use_color)} "
+                  f"{pad_colored(rhat_str, 12, use_color)} "
+                  f"{ess_str:<14} {evals_str:<10} {time_str:<8}")
 
 
 def print_comparison(results, use_color=True):

@@ -24,6 +24,91 @@ Systematic comparison of four Bayesian MCMC samplers in PyBNF:
 **Fairness:** All samplers within a problem use identical `population_size`, `max_iterations`,
 `burn_in`, `sample_every`, and `parallel_count`. No warm starts. Cold start for all methods.
 
+## Step-by-Step Guide
+
+If you're new to this project, follow these steps in order:
+
+### 1. Verify your setup
+
+```bash
+# Check PyBNF is installed
+pybnf --version
+
+# Check BioNetGen is available (needed for all problems except Banana/Gaussian/Multimodal)
+echo $BNGPATH
+ls $BNGPATH/BNG2.pl
+```
+
+### 2. Test with a quick local run
+
+Start with the simplest problem to verify everything works:
+
+```bash
+cd examples/sampler_benchmarking/Banana
+pybnf -c am.conf -o
+# Should complete in under a minute and create output_am/ with results
+```
+
+### 3. Test a BNG-based problem locally (optional)
+
+```bash
+cd examples/sampler_benchmarking/HIVdynamics
+pybnf -c am.conf -o
+# Takes longer but verifies BioNetGen integration works
+```
+
+### 4. Adapt SLURM scripts for your cluster
+
+Edit the `run_*.sh` scripts to match your cluster's module system:
+
+```bash
+# In each run_*.sh, uncomment and adjust these lines:
+module purge
+module load anaconda3/2023.09          # <-- your Python module name
+export BNGPATH=/path/to/BioNetGen     # <-- your BioNetGen path
+```
+
+You only need to do this once per problem folder (the 4 scripts within a folder
+have the same module/BNGPATH lines).
+
+### 5. Submit jobs
+
+```bash
+# Submit everything
+./run_all.sh
+
+# Or start small
+./run_all.sh --problems Banana Gaussian_d10 Multimodal
+```
+
+### 6. Monitor and collect results
+
+```bash
+# Check job status
+squeue -u $USER
+
+# Once jobs finish, view results
+python3 collect_results.py
+python3 collect_results.py --compare
+```
+
+### 7. If runs don't converge, add more iterations
+
+```bash
+# Add 10000 more iterations to all runs
+./run_all.sh --resume 10000
+
+# Or target specific problems
+./run_all.sh --resume 5000 --problems EGFR_d10 EGFR_d37
+```
+
+### Reference MLE values
+
+For problems that have archived AM results from previous studies (`reference_mle.txt`
+files in LinearRegression, HIVdynamics, COVID19_BigApple, Degranulation), you can
+compare new AM results against these as a sanity check. If your AM run converges to
+a very different MLE, that may indicate a configuration issue.
+
 ## Prerequisites
 
 1. **PyBNF** installed and on PATH (`pip install pybnf` or from source)
