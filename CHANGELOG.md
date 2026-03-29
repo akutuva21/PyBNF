@@ -9,6 +9,7 @@ All notable changes to PyBNF are documented below. This project adheres to
 - Formal EBNF grammar for BPSL in the documentation (#271)
 
 ### Fixed
+- `wall_time_sim` for SBML models now works when PyBNF is installed via PyPI (#249)
 - Dependency warning spam (numpy, YAML, etc.) no longer clutters the terminal; routed to log file (#274)
 
 ## [v1.3.0] - 2026-03-29 (changes relative to v1.2.2, which was untagged)
