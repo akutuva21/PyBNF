@@ -71,6 +71,10 @@ module load anaconda3/2023.09          # <-- your Python module name
 export BNGPATH=/path/to/BioNetGen     # <-- your BioNetGen path
 ```
 
+**Note:** If `pybnf` is not on your PATH (e.g., in a development install), you can
+use `python3 -m pybnf` instead. In that case, update the `pybnf` command in the
+SLURM scripts accordingly.
+
 You only need to do this once per problem folder (the 4 scripts within a folder
 have the same module/BNGPATH lines).
 
