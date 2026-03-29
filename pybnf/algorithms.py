@@ -3369,6 +3369,15 @@ class Adaptive_MCMC(BayesianAlgorithm):
                         self.output_run_noise_MLE[k + i] = np.zeros((self.num_parallel, 1, self.time[k]+1))
                         self.output_run_noise_all[k + i] = np.zeros((self.num_parallel, 1, self.time[k]+1))
         if self.config.config['continue_run'] == 1:
+            adaptive_dir = self.config.config['output_dir'] + '/adaptive_files'
+            required = ['diff.txt', 'MLE_params.txt', 'diffMatrix.txt']
+            missing = [f for f in required if not os.path.exists(os.path.join(adaptive_dir, f))]
+            if missing:
+                raise PybnfError(
+                    'continue_run = 1 requires adaptive files from a completed prior run, '
+                    'but the following files are missing from %s: %s. '
+                    'Run the model first without continue_run, or check that output_dir '
+                    'points to a previous run\'s output.' % (adaptive_dir, ', '.join(missing)))
             self.diff = [self.step_size] * self.num_parallel
             self.diff_best = np.loadtxt(self.config.config['output_dir'] + '/adaptive_files/diff.txt')
             self.diffMatrix = np.zeros((self.num_parallel, len(self.variables), len(self.variables))) 
