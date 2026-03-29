@@ -650,7 +650,7 @@ class Algorithm(object):
                 logger.warning('Simulation corresponding to Result %s contained NaNs or Infs' % res.name)
                 logger.warning('Discarding Result %s as having an infinite objective function value' % res.name)
                 print1('Simulation data in Result %s has NaN or Inf values.  Discarding this parameter set' % res.name)
-        logger.info('Adding Result %s to Trajectory with score %.4f' % (res.name, res.score))
+        logger.debug('Adding Result %s to Trajectory with score %.4f' % (res.name, res.score))
         self.trajectory.add(res.pset, res.score, res.name)
 
     def random_pset(self):
@@ -1549,7 +1549,7 @@ class DifferentialEvolution(DifferentialEvolutionBase):
             self.waiting_count[island] = self.num_per_island
 
             if self.iter_num[island] % 20 == 0:
-                logger.info('Island %i completed %i iterations' % (island, self.iter_num[island]))
+                logger.debug('Island %i completed %i iterations' % (island, self.iter_num[island]))
                 # print(sorted(self.fitnesses[island]))
 
             # Convergence check
@@ -1649,7 +1649,7 @@ class AsynchronousDifferentialEvolution(DifferentialEvolutionBase):
             print2('Current population fitnesses:')
             print2(sorted(self.fitnesses))
             if iters_complete % 20 == 0:
-                logger.info('Completed %i simulations' % self.sims_completed)
+                logger.debug('Completed %i simulations' % self.sims_completed)
             if iters_complete >= self.max_iterations:
                 return 'STOP'
             # Convergence check
@@ -1809,7 +1809,7 @@ class ScatterSearch(Algorithm):
 
             # 2) Sort the refs list by quality.
             self.refs = sorted(self.refs, key=lambda x: x[1])
-            logger.info('Iteration %i' % self.iteration)
+            logger.debug('Iteration %i' % self.iteration)
             if self.iteration % 10 == 0:
                 print1('Completed iteration %i of %i' % (self.iteration, self.max_iterations))
             else:
@@ -2539,7 +2539,7 @@ class DreamAlgorithm(BayesianAlgorithm):
                     return 'STOP'
             else:
                 print2('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
-            logger.info('Completed %i iterations' % self.iteration[index])
+            logger.debug('Completed %i iterations' % self.iteration[index])
             print2('Current -Ln Posteriors: %s' % str(self.ln_current_P))
 
             # Outlier detection (every 10 iterations, only during burn-in)
@@ -2554,17 +2554,17 @@ class DreamAlgorithm(BayesianAlgorithm):
                     mean_dist = self.cr_total_distance / np.maximum(self.cr_usage_count, 1)
                 if np.sum(mean_dist) > 0:
                     self.cr_probs = mean_dist / np.sum(mean_dist)
-                    logger.info('Updated CR probabilities: %s' % str(self.cr_probs))
+                    logger.debug('Updated CR probabilities: %s' % str(self.cr_probs))
             elif self.iteration[index] > self.cr_adapt_end and not self.cr_frozen:
                 self.cr_frozen = True
-                logger.info('CR probabilities frozen at iteration %d: %s'
+                logger.debug('CR probabilities frozen at iteration %d: %s'
                             % (self.iteration[index], str(self.cr_probs)))
 
             # Grow the ZS archive: every K generations, append current chain states
             if self.iteration[index] % self.archive_thin_rate == 0:
                 for i in range(self.num_parallel):
                     self.archive.append(copy.deepcopy(self.current_pset[i]))
-                logger.info('Archive grown to %d entries at iteration %d'
+                logger.debug('Archive grown to %d entries at iteration %d'
                             % (len(self.archive), self.iteration[index]))
 
             # Save old states and compute population std for CR adaptation
@@ -2921,7 +2921,7 @@ class SCreamAlgorithm(DreamAlgorithm):
         self.refset = selected
         self.archive = self.refset  # DreamAlgorithm draws donors from self.archive
         self.refset_built = True
-        logger.info('S-CREAM: rebuilt reference set (%d quality + %d diversity) from pool of %d'
+        logger.debug('S-CREAM: rebuilt reference set (%d quality + %d diversity) from pool of %d'
                      % (b1, len(self.refset) - b1, len(self.pool)))
 
     def got_result(self, res):
@@ -3166,10 +3166,10 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
                             return None
                 else:
                     print2('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
-                logger.info('Completed %i iterations' % self.iteration[index])
-                logger.info('Current move accept rate: %f' % (self.accepted/self.attempts))
+                logger.debug('Completed %i iterations' % self.iteration[index])
+                logger.debug('Current move accept rate: %f' % (self.accepted/self.attempts))
                 if self.exchange_attempts > 0:
-                    logger.info('Current replica exchange rate: %f' % (self.exchange_accepted / self.exchange_attempts))
+                    logger.debug('Current replica exchange rate: %f' % (self.exchange_accepted / self.exchange_attempts))
                 if self.sa:
                     logger.debug('Current betas: ' + str(self.betas))
                 print2('Current -Ln Likelihoods: ' + str(self.ln_current_P))
@@ -3225,7 +3225,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
         Then proposes n new parameter sets to resume all chains after the exchange.
         :return: List of n PSets to run
         """
-        logger.info('Performing replica exchange on iteration %i' % self.iteration[0])
+        logger.debug('Performing replica exchange on iteration %i' % self.iteration[0])
         # Who exchanges with whom is a little complicated. Each replica tries one exchange with a replica at the next
         # beta. But if we have multiple reps per beta, then the exchanges aren't necessarily within the same group of
         # reps. We use this random permutation to determine which groups exchange.
