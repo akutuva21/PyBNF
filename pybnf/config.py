@@ -54,6 +54,10 @@ def init_logging(file_prefix, debug=False, log_level_name='info'):
     root.setLevel(10)
     root.addHandler(fh)
 
+    # Route Python warnings (numpy RuntimeWarning, YAMLLoadWarning, etc.) through
+    # the logging system so they go to the log file instead of spamming the terminal.
+    logging.captureWarnings(True)
+
     dlog = logging.getLogger('distributed')
     dlog.handlers[:] = []  # remove any existing handlers
     dlog.setLevel(max(logging.WARNING, log_level))
