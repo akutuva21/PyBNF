@@ -76,9 +76,9 @@ _BASE_VARS = {
     ('uniform_var', 'v3__FREE'): [0, 10],
 }
 _BASE_MODEL = {
-    'models': {'bngl_files/parabola.bngl'},
-    'exp_data': {'bngl_files/par1.exp'},
-    'bngl_files/parabola.bngl': ['bngl_files/par1.exp'],
+    'models': {'tests/bngl_files/parabola.bngl'},
+    'exp_data': {'tests/bngl_files/par1.exp'},
+    'tests/bngl_files/parabola.bngl': ['tests/bngl_files/par1.exp'],
 }
 
 
