@@ -14,12 +14,11 @@ import heapq
 import traceback
 import roadrunner as rr
 import pickle
-from os.path import abspath, dirname, join, isfile
+from os.path import join
 import os
 import tempfile
 from sys import executable
 
-ROOT_DIRECTORY = join(dirname(abspath(__file__)), '..')
 rr.Logger.disableLogging()
 
 logger = logging.getLogger(__name__)
@@ -780,19 +779,12 @@ class SbmlModelNoTimeout(Model):
 
 class SbmlModel(SbmlModelNoTimeout):
 
-    def __init__(self, file, abs_file, pset=None, actions=(), save_files=False, integrator='cvode'):
-        super(SbmlModel, self).__init__(file, abs_file, pset, actions, save_files, integrator)
-        if not isfile(ROOT_DIRECTORY + '/sbml_runner.py'):
-            raise PybnfError('The "wall_time_sim" option for SBML models does not work if PyBNF was installed through '
-                             'PyPI (pip install pybnf). If you need this option, please install from the source code '
-                             'on GitHub.')
-
     def execute(self, folder, filename, timeout):
         self.curr_folder = folder
         self.curr_file = filename
         arg = pickle.dumps(self)
         with open('%s/%s.log' % (folder, filename), 'w') as errout:
-            stdout_data = run_subprocess([executable, ROOT_DIRECTORY + '/sbml_runner.py'],
+            stdout_data = run_subprocess([executable, '-m', 'pybnf.sbml_runner'],
                                          timeout=timeout, stdout=PIPE, stderr=errout, input=arg)
         result = pickle.loads(stdout_data)
         return result
