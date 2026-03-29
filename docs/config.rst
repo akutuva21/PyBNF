@@ -15,6 +15,36 @@ Each line of a conf file has the general format config_key=value, which assigns 
 The available configuration keys to be specified are detailed in :ref:`config_keys`.
 
 
+Command-Line Options
+--------------------
+
+PyBNF accepts the following command-line flags:
+
+``-c CONF_FILE``
+  Path to the configuration file (required).
+
+``-t CLUSTER_TYPE``
+  Cluster type (e.g. ``slurm``). See :ref:`cluster` for details.
+
+``-s SCHEDULER_FILE``
+  Path to a Dask scheduler file. See :ref:`Manual configuration with Dask <manualdask>`.
+
+``-o``
+  Automatically overwrite existing output folders without prompting.
+
+``-r [N]``
+  Resume a previous fitting run. Optionally pass a number to add that many iterations.
+
+``-l LOG_PREFIX``
+  Custom prefix for log file names.
+
+``-L LOG_LEVEL``
+  Set the verbosity of the log file. Options in decreasing order of verbosity: ``debug``, ``info`` (default), ``warning``, ``error``, ``critical``, ``none``. Single-letter abbreviations (``d``, ``i``, ``w``, ``e``, ``c``, ``n``) are also accepted. Use ``-L debug`` for detailed per-iteration output, or ``-L warning`` for minimal logs.
+
+``-d``
+  Output a separate debug log file (can be very large).
+
+
 Model Files
 -----------
 
