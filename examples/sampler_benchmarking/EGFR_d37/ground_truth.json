@@ -1,0 +1,6 @@
+{
+  "description": "EGFR signaling model (Blinov et al. 2006), d=37, real-world benchmark",
+  "target_type": "bngl_model",
+  "dimension": 37,
+  "notes": "No analytical posterior. Compare convergence speed (R-hat trajectory) and posterior agreement between samplers. All parameters have log-uniform priors."
+}

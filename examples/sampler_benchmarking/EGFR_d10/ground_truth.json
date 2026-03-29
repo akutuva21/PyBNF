@@ -1,0 +1,6 @@
+{
+  "description": "EGFR signaling model (Blinov et al. 2006), d=10, reduced real-world benchmark",
+  "target_type": "bngl_model",
+  "dimension": 10,
+  "notes": "10 core cascade parameters free (ligand binding, dimerization, phosphorylation, Grb2/Shc binding); remaining 27 fixed at published values. No analytical posterior."
+}

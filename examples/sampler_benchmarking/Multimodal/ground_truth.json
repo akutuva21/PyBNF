@@ -1,0 +1,15 @@
+{
+  "description": "Mixture of 3 Gaussians in 2D with separated modes",
+  "target_type": "multimodal",
+  "dimension": 2,
+  "parameters": ["x1", "x2"],
+  "modes": [
+    {"weight": 0.4, "mean": [-4.0, -4.0], "variance": [1.0, 1.0]},
+    {"weight": 0.3, "mean": [4.0, 4.0], "variance": [1.0, 1.0]},
+    {"weight": 0.3, "mean": [-4.0, 4.0], "variance": [2.0, 0.5]}
+  ],
+  "posterior_mean": [-1.6, 0.8],
+  "posterior_variance": [14.74, 16.21],
+  "posterior_std": [3.8393, 4.0262],
+  "notes": "Mixture mean: 0.4*(-4,-4) + 0.3*(4,4) + 0.3*(-4,4) = (-1.6, 0.8). Var = sum_k w_k*(sigma_k^2 + mu_k^2) - mu_mix^2. Three well-separated modes test mode-jumping capability. Mode 3 has anisotropic variance (wider in x1, narrower in x2). Verify: (1) all 3 modes are visited, (2) mode weights match."
+}

@@ -1,0 +1,13 @@
+{
+  "description": "Rosenbrock/banana distribution, 2D, a=1, b=10",
+  "target_type": "banana",
+  "dimension": 2,
+  "parameters": ["x1", "x2"],
+  "a": 1.0,
+  "b": 10.0,
+  "posterior_mode": [1.0, 1.0],
+  "posterior_mean": [1.0, 2.0],
+  "posterior_variance": [1.0, 6.05],
+  "posterior_std": [1.0, 2.4597],
+  "notes": "log p(x1,x2) = -0.5*[(a-x1)^2 + b*(x2-x1^2)^2]. Mode at (a, a^2)=(1,1). x1~N(1,1), x2|x1~N(x1^2, 1/(2b)). Marginal moments: E[x2]=E[x1^2]=2, Var(x2)=Var(x1^2)+1/20=6.05. The posterior has a narrow curved valley along x2=x1^2."
+}

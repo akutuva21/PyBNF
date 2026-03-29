@@ -1,0 +1,8 @@
+{
+  "type": "multimodal",
+  "modes": [
+    {"weight": 0.4, "mean": [-4.0, -4.0], "variance": [1.0, 1.0]},
+    {"weight": 0.3, "mean": [4.0, 4.0], "variance": [1.0, 1.0]},
+    {"weight": 0.3, "mean": [-4.0, 4.0], "variance": [2.0, 0.5]}
+  ]
+}
