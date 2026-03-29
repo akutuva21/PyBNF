@@ -2589,10 +2589,17 @@ class DreamAlgorithm(BayesianAlgorithm):
                     new_pset.name = 'iter%irun%i' % (self.iteration[i], i)
                     next_gen.append(new_pset)
                 else:
-                    #  If new PSet is outside of variable bounds, keep current PSet and wait for next generation
-                    logger.debug('Proposed PSet %s is invalid.  Rejecting and waiting until next iteration' % i)
+                    # Out-of-bounds proposal: treat as a Metropolis rejection.
+                    # Record the current state in chain history (chain stays in place)
+                    # so that diagnostics (R-hat, ESS) correctly reflect the non-movement.
+                    logger.debug('Proposed PSet for chain %d is out of bounds. Treating as rejection.' % i)
+                    self.chain_history[i].append(self._param_vec(self.current_pset[i]))
+                    self.ln_posterior_history[i].append(self.ln_current_P[i])
                     self.wait_for_sync[i] = True
                     self.iteration[i] += 1
+                    self.acceptance_rates[i] = self.acceptances[i] / self.iteration[i]
+                    if self.iteration[i] % self.sample_every == 0 and self.iteration[i] > self.burn_in:
+                        self.sample_pset(self.current_pset[i], self.ln_current_P[i])
 
             if not next_gen:
                 logger.warning('All %d proposals were out of bounds at iteration %d. '
