@@ -1,0 +1,16 @@
+# Reference MLE from archived AM run (examples/LinearRegression_aMCMC)
+# Settings: population_size=1, 120k iterations, adaptive=10000, warm start
+# These values serve as a sanity check — new runs should converge to a similar region.
+#
+# Parameter          MLE
+W1                   1.0860
+W2                   0.9739
+W3                   1.0282
+W4                   0.8391
+W5                   0.7401
+W6                   1.3845
+W7                   0.1417
+W8                   1.0371
+W9                   1.0916
+W0                   1.0225
+b                   -0.0929
