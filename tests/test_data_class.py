@@ -1,7 +1,7 @@
 import math
 import numpy as np
 import numpy.testing as npt
-from .context import data, printing
+from .context import data, algorithms, printing
 from nose.tools import raises
 import copy
 
@@ -245,3 +245,39 @@ class TestData:
         d0.data = d0._read_file_lines(self.data0, '\s+')
         d0.normalize('peak')
         npt.assert_allclose(d0.data, np.array([[0., 1., 1., 1., np.nan, 1.], [1., 1., 1., 1., np.nan, 1.]]))
+
+    def test_normalize_column_specific_leaves_other_columns(self):
+        """Normalization restricted to specific columns should not touch other columns (issue #276)."""
+        d = data.Data()
+        d.data = d._read_file_lines(self.data1, '\s+')
+        original_obs3 = d.data[:, 3].copy()
+        # Normalize only obs1 (column name), leaving obs2 and obs3 untouched
+        d.normalize([('peak', ['obs1'])])
+        # obs1 should be normalized (max is 4, so values become 3/4, 2/4, 4/4)
+        npt.assert_allclose(d.data[:, 1], np.array([3./4, 2./4, 4./4]))
+        # obs3 should be untouched
+        npt.assert_allclose(d.data[:, 3], original_obs3)
+
+    def test_result_normalize_column_specific(self):
+        """Result.normalize with column-specific settings should only normalize listed columns (issue #276).
+
+        This tests the fix for the edge case where a .prop file shares a suffix with a .exp file:
+        normalization should only affect columns present in the .exp file.
+        """
+        # Simulate sim data with columns: time, obs1, obs2, obs3
+        # where obs1 appears in the .exp file but obs3 only appears in a .prop constraint
+        sim = data.Data()
+        sim.data = sim._read_file_lines(self.data1, '\s+')
+        original_obs3 = sim.data[:, 3].copy()
+
+        simdata = {'model1': {'data_suffix': sim}}
+        res = algorithms.Result(None, simdata, 'test')
+
+        # Column-specific normalization: only normalize obs1 (as the fix would produce)
+        settings = {'data_suffix': [('peak', ['obs1'])]}
+        res.normalize(settings)
+
+        # obs1 should be normalized
+        npt.assert_allclose(sim.data[:, 1], np.array([3./4, 2./4, 4./4]))
+        # obs3 should be untouched — this is the key assertion for issue #276
+        npt.assert_allclose(sim.data[:, 3], original_obs3)

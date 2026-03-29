@@ -764,8 +764,15 @@ class Configuration(object):
                                          "Invalid normalization type '%s'. Options are: init, peak, zero, unit" %
                                          self.config['normalization'][ef] + seedoc)
                 if type(val) == str:
-                    # This exp file has a single normalization type for all columns
+                    # This exp file has a single normalization type for all columns.
+                    # Convert to column-specific form using only the columns present in the .exp file,
+                    # so that simulation columns used only by .prop constraints are not normalized.
                     checkval(val)
+                    exp_cols = [c for c in self.exp_data[m][suff].cols
+                                if self.exp_data[m][suff].cols[c] != 0 and not c.endswith('_SD')]
+                    if not exp_cols:
+                        continue
+                    val = [(val, exp_cols)]
                 else:
                     # This exp file has a list of one or more pairs specifying (normalization_type, [columns])
                     for (i, (ntype, cols)) in enumerate(val):
@@ -809,6 +816,17 @@ class Configuration(object):
                 raise PybnfError("Invalid normalization type '%s'" % self.config['normalization'],
                                  "Invalid normalization type '%s'. Options are: init, peak, zero, unit" %
                                  self.config['normalization'] + seedoc)
+            # Convert global normalization to column-specific form for each exp file,
+            # so that simulation columns used only by .prop constraints are not normalized.
+            ntype = self.config['normalization']
+            newdict = dict()
+            for m in self.exp_data:
+                for suff in self.exp_data[m]:
+                    exp_cols = [c for c in self.exp_data[m][suff].cols
+                                if self.exp_data[m][suff].cols[c] != 0 and not c.endswith('_SD')]
+                    if exp_cols:
+                        newdict[suff] = [(ntype, exp_cols)]
+            self.config['normalization'] = newdict
 
     def _load_postprocessing(self):
         """

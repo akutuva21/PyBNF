@@ -49,7 +49,7 @@ class TestConfig(object):
         assert not sorted_vars[1].log_space
         assert not sorted_vars[1].bounded
         assert [v.name for v in sorted_vars] == ['__koff2__FREE', 'kase__FREE', 'koff__FREE', 'pase__FREE']
-        assert c.config['normalization']['p1_5'] == 'init'
+        assert c.config['normalization']['p1_5'] == [('init', ['R_free'])]
         assert c.config['cluster_type'] is None
 
     def test_config_normalization(self):
