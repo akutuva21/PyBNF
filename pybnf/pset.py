@@ -16,6 +16,7 @@ import roadrunner as rr
 import pickle
 from os.path import abspath, dirname, join, isfile
 import os
+import tempfile
 from sys import executable
 
 ROOT_DIRECTORY = join(dirname(abspath(__file__)), '..')
@@ -605,6 +606,11 @@ class SbmlModelNoTimeout(Model):
 
         self.species_names = set(runner.model.getFloatingSpeciesIds()).union(set(runner.model.getBoundarySpeciesIds()))
         self.param_names = self.species_names.union(set(runner.model.getGlobalParameterIds()))
+
+        # Save compiled RoadRunner state to a temp file to avoid re-parsing XML on every execute() call
+        self._state_file = tempfile.NamedTemporaryFile(suffix='.rr', delete=False).name
+        runner.saveState(self._state_file)
+
         logger.debug('Loaded model %s with Roadrunner' % self.name)
 
     def copy_with_param_set(self, pset):
@@ -613,6 +619,12 @@ class SbmlModelNoTimeout(Model):
         newmodel.param_set = pset
         return newmodel
 
+    def _load_runner(self):
+        """Load a RoadRunner instance from the saved state file, avoiding slow XML re-parsing."""
+        runner = rr.RoadRunner()
+        runner.loadState(self._state_file)
+        return runner
+
     def model_text(self, mut=None):
         """
         Generates the XML text of the model, optionally applying the MutationSet mut
@@ -620,7 +632,7 @@ class SbmlModelNoTimeout(Model):
         :return:
         """
         logger.info('Generating model text for %s' % self.name)
-        runner = rr.RoadRunner(self.abs_file_path)
+        runner = self._load_runner()
         self._modify_params(runner)
         if mut:
             self._apply_mutant(mut, runner)
@@ -684,8 +696,7 @@ class SbmlModelNoTimeout(Model):
                 setattr(runner, mi.name, mi.undo())
 
     def execute(self, folder, filename, timeout):
-        # Load the original xml file with Roadrunner
-        runner = rr.RoadRunner(self.abs_file_path)
+        runner = self._load_runner()
 
         # Do parameter modifications
         self._modify_params(runner)
