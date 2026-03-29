@@ -5,6 +5,9 @@ All notable changes to PyBNF are documented below. This project adheres to
 
 ## [Unreleased]
 
+### Added
+- Formal EBNF grammar for BPSL in the documentation (#271)
+
 ### Fixed
 - Dependency warning spam (numpy, YAML, etc.) no longer clutters the terminal; routed to log file (#274)
 

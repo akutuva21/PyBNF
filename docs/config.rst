@@ -102,7 +102,34 @@ Property (BPSL) files
 
 Property files are plain text files with the extension ".prop" that define qualitative system properties. In PyBNF, properties are expressed as inequality constraints to be imposed on the outputs of the model. Such constraints can be used to formalize qualitative data known about the biological system of interest. The syntax for writing .prop files, described in this section, is called the  Biological Property Specification Language (BPSL).
 
-Each line of the .prop file should contain constraint declaration consisting of three parts: an inequality to be satisfied, an enforcement condition that specifies when in the simulation time course the constraint is applied, and a clause that specifies how the constraint should be incorporated into the objective function. 
+Each line of the .prop file should contain constraint declaration consisting of three parts: an inequality to be satisfied, an enforcement condition that specifies when in the simulation time course the constraint is applied, and a clause that specifies how the constraint should be incorporated into the objective function.
+
+Formal grammar
+^^^^^^^^^^^^^^
+
+The following EBNF grammar defines the complete BPSL syntax. All keywords are case-insensitive. ::
+
+    constraint     = ( inequality enforcement | split ) [ penalty ] [ comment ]
+
+    inequality     = ( observable | number ) operator ( observable | number )
+    operator       = "<" | "<=" | ">" | ">="
+    observable     = letter { letter | digit | "_" | "." }
+    number         = [ "+" | "-" ] digit { digit } [ "." { digit } ]
+                     [ "E" [ "+" | "-" ] digit { digit } ]
+
+    enforcement    = at_clause | between_clause | "once" | "always"
+    at_clause      = "at" criterion [ "everytime" | "first" ] [ "before" ]
+    between_clause = ( "between" | "once between" ) criterion "," criterion
+    criterion      = number | observable "=" number
+
+    split          = observable at_clause operator observable at_clause
+
+    penalty        = weight_clause | likelihood_clause
+    weight_clause  = "weight" number [ "altpenalty" inequality ] [ "min" number ]
+    likelihood_clause = ( "confidence" number | "pmin" number "pmax" number )
+                        [ "tolerance" number ]
+
+    comment        = "#" { any printable character }
 
 Two methods of incorporating constraints are supported. A static penalty model can be used by providing a `Weight`_ clause. In this case, if a constraint of the form :math:`A<B` with weight :math:`w` is violated, then the value added to the objective function is :math:`w*(A-B)`. Alternatively, a likelihood-based model can be used by providing a `Confidence`_ clause. In this case, the contribution is the negative log probability of constraint satisfaction. The likelihood-based model should be used when statistically rigorous results are important, such as when performing Bayesian uncertainty quantification. It is not recommended to mix between the static penalty and likelihood models within the same fitting problem. 
 
