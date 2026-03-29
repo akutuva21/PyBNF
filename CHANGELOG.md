@@ -3,6 +3,11 @@
 All notable changes to PyBNF are documented below. This project adheres to
 [Keep a Changelog](https://keepachangelog.com) conventions.
 
+## [Unreleased]
+
+### Fixed
+- Dependency warning spam (numpy, YAML, etc.) no longer clutters the terminal; routed to log file (#274)
+
 ## [v1.3.0] - 2026-03-29 (changes relative to v1.2.2, which was untagged)
 
 ### Added
