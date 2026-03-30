@@ -915,7 +915,7 @@ class Algorithm(object):
                     print1('Job %s failed' % res.name)
                 else:
                     print1('Job %s timed out' % res.name)
-                if self.success_count == 0 and self.fail_count >= 100:
+                if self.success_count == 0 and self.fail_count >= self.config.config['max_failed_simulations']:
                     raise PybnfError('Aborted because all jobs are failing',
                                      'Your simulations are failing to run. Logs from failed simulations are saved in '
                                      'the FailedSimLogs directory. For help troubleshooting this error, refer to '

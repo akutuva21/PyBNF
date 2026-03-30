@@ -507,6 +507,15 @@ Algorithm Options
   
     * ``wall_time_sim = 600``
 
+**max_failed_simulations**
+  Maximum number of simulation failures allowed before any successful simulation completes. If this many jobs fail (crash, not timeout) before the first success, PyBNF aborts. Increase this value if your model has a high failure rate at many parameter sets but can still succeed at others.
+
+  Default: 100
+
+  Example:
+
+    * ``max_failed_simulations = 500``
+
 
 Algorithm-specific Options
 --------------------------

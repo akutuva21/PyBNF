@@ -192,6 +192,7 @@ class Configuration(object):
             'simplex_step': 1.0, 'simplex_reflection': 1.0, 'simplex_expansion':1.0, 'simplex_contraction': 0.5,
             'simplex_shrink': 0.5, 'simplex_stop_tol': 0.,
 
+            'max_failed_simulations': 100,
             'wall_time_gen': 3600,
             'wall_time_sim': None,  # Chosen when loading models
             'normalization': None,
