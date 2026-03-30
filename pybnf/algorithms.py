@@ -1904,6 +1904,13 @@ class BayesianAlgorithm(Algorithm):
         # Total model evaluations for ESS/evaluation metric
         self.total_evaluations = 0
 
+        # Constraint satisfaction tracking
+        self.all_constraints = []
+        for cset in self.config.constraints:
+            self.all_constraints.extend(cset.constraints)
+        self.current_constraint_satisfied = [None] * self.num_parallel
+        self.constraint_samples_file = self.config.config['output_dir'] + '/Results/constraint_samples.txt'
+
         # Check that the iteration range is valid with respect to the burnin and or adaptive iterations
         
 
@@ -1950,6 +1957,11 @@ class BayesianAlgorithm(Algorithm):
         if setup_samples:
             with open(self.samples_file, 'w') as f:
                 f.write('# Name\tLn_probability\t'+first_psets[0].keys_to_string()+'\n')
+            if self.all_constraints:
+                with open(self.constraint_samples_file, 'w') as f:
+                    header = '\t'.join(c.source_line or 'constraint_%i' % i
+                                       for i, c in enumerate(self.all_constraints))
+                    f.write('# ' + header + '\n')
             os.makedirs(self.config.config['output_dir'] + '/Results/Histograms/', exist_ok=True)
 
 
@@ -1987,16 +1999,58 @@ class BayesianAlgorithm(Algorithm):
                     total += -np.inf
         return total
 
-    def sample_pset(self, pset, ln_prob):
+    def evaluate_constraints(self, simdata, chain_index):
+        """
+        Evaluate all constraints against simulation data and cache the pass/fail results for this chain.
+
+        :param simdata: Simulation data dictionary
+        :param chain_index: Index of the chain that was accepted
+        """
+        if not self.all_constraints:
+            return
+        satisfied = []
+        for c in self.all_constraints:
+            satisfied.append(1 if c.penalty(simdata) == 0 else 0)
+        self.current_constraint_satisfied[chain_index] = satisfied
+
+    def sample_pset(self, pset, ln_prob, chain_index=None):
         """
         Adds this pset to the set of sampled psets for the final distribution.
         :param pset:
         :type pset: PSet
         :param ln_prob - The probability of this PSet to record in the samples file.
         :type ln_prob: float
+        :param chain_index: Index of the chain, used to look up cached constraint results.
+        :type chain_index: int or None
         """
         with open(self.samples_file, 'a') as f:
             f.write(pset.name+'\t'+str(ln_prob)+'\t'+pset.values_to_string()+'\n')
+        if self.all_constraints and chain_index is not None and self.current_constraint_satisfied[chain_index] is not None:
+            with open(self.constraint_samples_file, 'a') as f:
+                f.write('\t'.join(str(x) for x in self.current_constraint_satisfied[chain_index]) + '\n')
+
+    def report_constraint_satisfaction(self, file_ext):
+        """
+        Read the constraint samples file and write a summary of constraint satisfaction percentages.
+        :param file_ext: String to append to the output file name
+        """
+        if not self.all_constraints:
+            return
+        try:
+            dat = np.loadtxt(self.constraint_samples_file)
+        except (OSError, ValueError):
+            return
+        if dat.ndim < 2 or dat.shape[0] == 0:
+            return
+        n_samples = dat.shape[0]
+        filepath = self.config.config['output_dir'] + '/Results/constraint_satisfaction%s.txt' % file_ext
+        with open(filepath, 'w') as f:
+            f.write('# constraint\tpercent_satisfied\tn_satisfied\tn_total\n')
+            for i, c in enumerate(self.all_constraints):
+                n_satisfied = int(np.sum(dat[:, i]))
+                pct = 100.0 * n_satisfied / n_samples
+                label = c.source_line or 'constraint_%i' % i
+                f.write('%s\t%.1f%%\t%i\t%i\n' % (label, pct, n_satisfied, n_samples))
 
     def update_histograms(self, file_ext):
         """
@@ -2258,6 +2312,7 @@ class BayesianAlgorithm(Algorithm):
                 and max_rhat <= self.rhat_threshold):
             print1('R-hat converged (%.4f <= %.4f). Stopping.' % (max_rhat, self.rhat_threshold))
             self.update_histograms('_final')
+            self.report_constraint_satisfaction('_final')
             return True
         return False
 
@@ -2285,6 +2340,7 @@ class BayesianAlgorithm(Algorithm):
         Save the histograms in addition to the usual algorithm cleanup"""
         super().cleanup()
         self.update_histograms('_end')
+        self.report_constraint_satisfaction('_end')
 
 
 class DreamAlgorithm(BayesianAlgorithm):
@@ -2493,6 +2549,7 @@ class DreamAlgorithm(BayesianAlgorithm):
             self.current_pset[index] = pset
             self.ln_current_P[index] = lnposterior
             self.acceptances[index] += 1
+            self.evaluate_constraints(res.simdata, index)
 
         # Store chain history (after accept/reject, so it reflects the kept state)
         self.chain_history[index].append(self._param_vec(self.current_pset[index]))
@@ -2514,7 +2571,7 @@ class DreamAlgorithm(BayesianAlgorithm):
 
         # Update histograms and trajectories if necessary
         if self.iteration[index] % self.sample_every == 0 and self.iteration[index] > self.burn_in:
-            self.sample_pset(self.current_pset[index], self.ln_current_P[index])
+            self.sample_pset(self.current_pset[index], self.ln_current_P[index], index)
         if (self.iteration[index] % (self.sample_every * self.output_hist_every) == 0
             and self.iteration[index] > self.burn_in):
             self.update_histograms('_%i' % self.iteration[index])
@@ -2529,6 +2586,7 @@ class DreamAlgorithm(BayesianAlgorithm):
 
             if min(self.iteration) >= self.max_iterations:
                 self.update_histograms('_final')
+                self.report_constraint_satisfaction('_final')
                 return 'STOP'
 
             if self.iteration[index] % 10 == 0:
@@ -2599,7 +2657,7 @@ class DreamAlgorithm(BayesianAlgorithm):
                     self.iteration[i] += 1
                     self.acceptance_rates[i] = self.acceptances[i] / self.iteration[i]
                     if self.iteration[i] % self.sample_every == 0 and self.iteration[i] > self.burn_in:
-                        self.sample_pset(self.current_pset[i], self.ln_current_P[i])
+                        self.sample_pset(self.current_pset[i], self.ln_current_P[i], i)
 
             if not next_gen:
                 logger.warning('All %d proposals were out of bounds at iteration %d. '
@@ -3067,6 +3125,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
             self.accepted += 1
             self.current_pset[index] = pset
             self.ln_current_P[index] = lnposterior
+            self.evaluate_constraints(res.simdata, index)
             # For simulated annealing, reduce the temperature if this was an unfavorable move.
             if self.sa and ln_p_accept < 0.:
                 self.betas[index] += self.cooling
@@ -3100,6 +3159,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
                 print0('Overall move accept rate: %f' % (self.accepted/self.attempts))
                 if not self.sa:
                     self.update_histograms('_final')
+                    self.report_constraint_satisfaction('_final')
                 return 'STOP'
             else:
                 return []
@@ -3144,7 +3204,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
             if not self.sa:
                 if self.iteration[index] > self.burn_in and self.iteration[index] % self.sample_every == 0 \
                         and self.should_sample(index):
-                    self.sample_pset(self.current_pset[index], self.ln_current_P[index])
+                    self.sample_pset(self.current_pset[index], self.ln_current_P[index], index)
                 if (self.iteration[index] > self.burn_in
                    and self.iteration[index] % (self.output_hist_every * self.sample_every) == 0
                    and self.iteration[index] == min(self.iteration)):
@@ -3280,6 +3340,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
         Save the histograms in addition to the usual algorithm cleanup"""
         super().cleanup()
         self.update_histograms('_end')
+        self.report_constraint_satisfaction('_end')
 
     def add_iterations(self, n):
         oldmax = self.max_iterations
@@ -3457,6 +3518,7 @@ class Adaptive_MCMC(BayesianAlgorithm):
         if self.accept == True:
             self.current_pset[index] = pset
             self.acceptances += 1
+            self.evaluate_constraints(res.simdata, index)
             self.list_trajactory = []      
             self.cp = []
             for i in self.current_pset[index]:
@@ -3550,7 +3612,7 @@ class Adaptive_MCMC(BayesianAlgorithm):
         # Standard BayesianAlgorithm sampling
         if (self.iteration[index] > self.burn_in
                 and self.iteration[index] % self.sample_every == 0):
-            self.sample_pset(self.current_pset[index], self.ln_current_P[index])
+            self.sample_pset(self.current_pset[index], self.ln_current_P[index], index)
         if (self.iteration[index] > self.burn_in
                 and self.iteration[index] % (self.sample_every * self.output_hist_every) == 0):
             self.update_histograms('_%i' % self.iteration[index])
@@ -3601,6 +3663,7 @@ class Adaptive_MCMC(BayesianAlgorithm):
                 self.combine_chains_params()
                 self.combine_chains_traj()
                 self.samples_file = self.config.config['output_dir'] + '/Results/A_MCMC/Runs/combined_params.txt'
+                self.report_constraint_satisfaction('_final')
                 return 'STOP'
             # Check if it's time to report stuff
             if self.iteration[index] % 10 == 0:

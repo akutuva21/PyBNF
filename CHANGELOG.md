@@ -6,9 +6,8 @@ All notable changes to PyBNF are documented below. This project adheres to
 ## [Unreleased]
 
 ### Added
+- Constraint satisfaction reporting for Bayesian samplers: after MCMC runs, a summary file reports the percentage of posterior samples satisfying each constraint (#324)
 - Formal EBNF grammar for BPSL in the documentation (#271)
-
-### Added
 - Command-line options reference in documentation
 
 ### Changed
