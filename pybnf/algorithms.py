@@ -3912,7 +3912,7 @@ class SimplexAlgorithm(Algorithm):
             else:
                 self.start_steps[v.name] = self.config.config['simplex_step']
 
-        self.parallel_count = min(self.config.config['population_size'], len(self.variables))
+        self.parallel_count = min(self.config.config['population_size'], max(len(self.variables) - 1, 1))
         self.iteration = 0
         self.alpha = self.config.config['simplex_reflection']
         self.gamma = self.config.config['simplex_expansion']
@@ -4120,6 +4120,7 @@ class SimplexAlgorithm(Algorithm):
             # Set up the next iteration
             # Re-sort the simplex based on the updated objectives
             self.simplex = sorted(self.simplex, key=lambda x: x[0])
+            self._check_degeneracy()
             if self.iteration == self.max_iterations:
                 return 'STOP' # Extra catch if finish on a rebuild the simplex iteration
             # Find the reflection point for the n worst points
@@ -4178,6 +4179,55 @@ class SimplexAlgorithm(Algorithm):
             else:
                 sums[p.name] = sum(np.log10(point[1][p.name]) for point in self.simplex)
         return sums
+
+    def _check_degeneracy(self):
+        """
+        Check if the simplex has become degenerate (near-zero volume) and perturb vertices if so.
+        Uses the determinant of the edge matrix to measure simplex volume.
+        """
+        if len(self.simplex) < 3:
+            return
+        n = len(self.variables)
+        # Build edge matrix: rows are (vertex_i - vertex_0) for i=1..n, in the appropriate space
+        v0 = self.simplex[0][1]
+        edge_matrix = np.zeros((len(self.simplex) - 1, n))
+        for i in range(1, len(self.simplex)):
+            for j, v in enumerate(self.variables):
+                if v.log_space:
+                    edge_matrix[i - 1, j] = np.log10(self.simplex[i][1][v.name]) - np.log10(v0[v.name])
+                else:
+                    edge_matrix[i - 1, j] = self.simplex[i][1][v.name] - v0[v.name]
+
+        # Compute a scale factor from the edge lengths to make the threshold relative
+        edge_norms = np.linalg.norm(edge_matrix, axis=1)
+        scale = np.mean(edge_norms) if np.mean(edge_norms) > 0 else 1.0
+
+        # For a square matrix, volume ~ |det|. Check if it's near-zero relative to scale.
+        if edge_matrix.shape[0] == edge_matrix.shape[1]:
+            vol = abs(np.linalg.det(edge_matrix))
+            threshold = (1e-10 * scale) ** n
+        else:
+            # Non-square: use product of singular values as a volume proxy
+            sv = np.linalg.svd(edge_matrix, compute_uv=False)
+            vol = np.prod(sv)
+            threshold = (1e-10 * scale) ** min(edge_matrix.shape)
+
+        if vol < threshold:
+            logger.warning('Simplex is nearly degenerate (volume=%.2e). Perturbing vertices.' % vol)
+            for i in range(1, len(self.simplex)):
+                old_pset = self.simplex[i][1]
+                new_vars = []
+                for v in self.variables:
+                    if v.log_space:
+                        log_val = np.log10(old_pset[v.name])
+                        perturbed = 10 ** (log_val + np.random.normal(0, 0.01 * scale))
+                    else:
+                        perturbed = old_pset[v.name] + np.random.normal(0, 0.01 * scale)
+                    perturbed = max(v.lower_bound, min(v.upper_bound, perturbed))
+                    new_vars.append(v.set_value(perturbed))
+                new_pset = PSet(new_vars)
+                new_pset.name = old_pset.name
+                self.simplex[i] = (self.simplex[i][0], new_pset)
 
     def a_plus_b_times_c_minus_d(self, a, b, c, d, v):
         """
