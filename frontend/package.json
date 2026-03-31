@@ -1,0 +1,36 @@
+{
+  "name": "pybnf-web-ui",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\" --prefix-colors \"cyan,magenta\" --names \"UI,API\"",
+    "dev:frontend": "vite",
+    "dev:backend": "cd .. && python -m pybnf.webservice",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.12.0",
+    "@emotion/styled": "^11.12.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@mui/material": "^5.14.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "axios": "^1.5.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.18.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "recharts": "^2.10.0",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@vitejs/plugin-react": "^4.5.0",
+    "concurrently": "^9.2.1",
+    "vite": "^5.4.0"
+  }
+}

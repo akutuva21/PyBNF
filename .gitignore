@@ -8,6 +8,7 @@ build/**
 examples/output/**
 docs/_build/**# macOS cruft
 .DS_Store
+.agent/skills/
 
 # Python build/cache
 __pycache__/
@@ -32,3 +33,27 @@ environment*.yml
 full-environment.yml
 pip-installed-packages.txt
 readme_dev.txt
+
+frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/playwright/.cache/
+
+pybnf_output_*
+
+# PyBNF Engine Logs & Temp Files
+bnf_*.log
+test*.log
+output/
+pybnf_output/
+pybnf_ui_runs/
+*.conf
+
+**/.pytest_cache/
+**/.ipynb_checkpoints/
+.venv/
+env/
+venv/
+*.swp
+*.bak
