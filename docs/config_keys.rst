@@ -507,6 +507,15 @@ Algorithm Options
   
     * ``wall_time_sim = 600``
 
+**max_failed_simulations**
+  Maximum number of simulation failures allowed before any successful simulation completes. If this many jobs fail (crash, not timeout) before the first success, PyBNF aborts. Increase this value if your model has a high failure rate at many parameter sets but can still succeed at others.
+
+  Default: 100
+
+  Example:
+
+    * ``max_failed_simulations = 500``
+
 
 Algorithm-specific Options
 --------------------------
@@ -1052,10 +1061,10 @@ For DREAM
   :math:`\hat{R}` below this threshold (checked after burn-in). Set to 0 to disable. A common
   threshold is 1.05. Default: 0 (disabled)
 
-For SCREAM
-""""""""""
+For S-CREAM
+"""""""""""
 
-SCREAM accepts all DREAM configuration keys above, plus the following:
+S-CREAM accepts all DREAM configuration keys above, plus the following:
 
 ``refset_size = int``
   Total size of the curated reference set. Larger values provide more proposal diversity but increase

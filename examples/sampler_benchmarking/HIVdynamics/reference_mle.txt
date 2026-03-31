@@ -1,0 +1,10 @@
+# Reference MLE from archived AM run (examples/HIVdynamics_aMCMC/pt303)
+# Settings: population_size=1, 200k iterations, adaptive=50000, warm start
+# These values serve as a sanity check — new runs should converge to a similar region.
+#
+# Parameter          MLE
+A                    0.3167
+d1                   0.8077
+d2                   0.1174
+V0                  64.163
+sigma                0.8718

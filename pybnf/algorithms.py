@@ -650,7 +650,7 @@ class Algorithm(object):
                 logger.warning('Simulation corresponding to Result %s contained NaNs or Infs' % res.name)
                 logger.warning('Discarding Result %s as having an infinite objective function value' % res.name)
                 print1('Simulation data in Result %s has NaN or Inf values.  Discarding this parameter set' % res.name)
-        logger.info('Adding Result %s to Trajectory with score %.4f' % (res.name, res.score))
+        logger.debug('Adding Result %s to Trajectory with score %.4f' % (res.name, res.score))
         self.trajectory.add(res.pset, res.score, res.name)
 
     def random_pset(self):
@@ -915,7 +915,7 @@ class Algorithm(object):
                     print1('Job %s failed' % res.name)
                 else:
                     print1('Job %s timed out' % res.name)
-                if self.success_count == 0 and self.fail_count >= 100:
+                if self.success_count == 0 and self.fail_count >= self.config.config['max_failed_simulations']:
                     raise PybnfError('Aborted because all jobs are failing',
                                      'Your simulations are failing to run. Logs from failed simulations are saved in '
                                      'the FailedSimLogs directory. For help troubleshooting this error, refer to '
@@ -1549,7 +1549,7 @@ class DifferentialEvolution(DifferentialEvolutionBase):
             self.waiting_count[island] = self.num_per_island
 
             if self.iter_num[island] % 20 == 0:
-                logger.info('Island %i completed %i iterations' % (island, self.iter_num[island]))
+                logger.debug('Island %i completed %i iterations' % (island, self.iter_num[island]))
                 # print(sorted(self.fitnesses[island]))
 
             # Convergence check
@@ -1649,7 +1649,7 @@ class AsynchronousDifferentialEvolution(DifferentialEvolutionBase):
             print2('Current population fitnesses:')
             print2(sorted(self.fitnesses))
             if iters_complete % 20 == 0:
-                logger.info('Completed %i simulations' % self.sims_completed)
+                logger.debug('Completed %i simulations' % self.sims_completed)
             if iters_complete >= self.max_iterations:
                 return 'STOP'
             # Convergence check
@@ -1809,7 +1809,7 @@ class ScatterSearch(Algorithm):
 
             # 2) Sort the refs list by quality.
             self.refs = sorted(self.refs, key=lambda x: x[1])
-            logger.info('Iteration %i' % self.iteration)
+            logger.debug('Iteration %i' % self.iteration)
             if self.iteration % 10 == 0:
                 print1('Completed iteration %i of %i' % (self.iteration, self.max_iterations))
             else:
@@ -1904,6 +1904,13 @@ class BayesianAlgorithm(Algorithm):
         # Total model evaluations for ESS/evaluation metric
         self.total_evaluations = 0
 
+        # Constraint satisfaction tracking
+        self.all_constraints = []
+        for cset in self.config.constraints:
+            self.all_constraints.extend(cset.constraints)
+        self.current_constraint_satisfied = [None] * self.num_parallel
+        self.constraint_samples_file = self.config.config['output_dir'] + '/Results/constraint_samples.txt'
+
         # Check that the iteration range is valid with respect to the burnin and or adaptive iterations
         
 
@@ -1950,6 +1957,11 @@ class BayesianAlgorithm(Algorithm):
         if setup_samples:
             with open(self.samples_file, 'w') as f:
                 f.write('# Name\tLn_probability\t'+first_psets[0].keys_to_string()+'\n')
+            if self.all_constraints:
+                with open(self.constraint_samples_file, 'w') as f:
+                    header = '\t'.join(c.source_line or 'constraint_%i' % i
+                                       for i, c in enumerate(self.all_constraints))
+                    f.write('# ' + header + '\n')
             os.makedirs(self.config.config['output_dir'] + '/Results/Histograms/', exist_ok=True)
 
 
@@ -1987,16 +1999,58 @@ class BayesianAlgorithm(Algorithm):
                     total += -np.inf
         return total
 
-    def sample_pset(self, pset, ln_prob):
+    def evaluate_constraints(self, simdata, chain_index):
+        """
+        Evaluate all constraints against simulation data and cache the pass/fail results for this chain.
+
+        :param simdata: Simulation data dictionary
+        :param chain_index: Index of the chain that was accepted
+        """
+        if not self.all_constraints:
+            return
+        satisfied = []
+        for c in self.all_constraints:
+            satisfied.append(1 if c.penalty(simdata) == 0 else 0)
+        self.current_constraint_satisfied[chain_index] = satisfied
+
+    def sample_pset(self, pset, ln_prob, chain_index=None):
         """
         Adds this pset to the set of sampled psets for the final distribution.
         :param pset:
         :type pset: PSet
         :param ln_prob - The probability of this PSet to record in the samples file.
         :type ln_prob: float
+        :param chain_index: Index of the chain, used to look up cached constraint results.
+        :type chain_index: int or None
         """
         with open(self.samples_file, 'a') as f:
             f.write(pset.name+'\t'+str(ln_prob)+'\t'+pset.values_to_string()+'\n')
+        if self.all_constraints and chain_index is not None and self.current_constraint_satisfied[chain_index] is not None:
+            with open(self.constraint_samples_file, 'a') as f:
+                f.write('\t'.join(str(x) for x in self.current_constraint_satisfied[chain_index]) + '\n')
+
+    def report_constraint_satisfaction(self, file_ext):
+        """
+        Read the constraint samples file and write a summary of constraint satisfaction percentages.
+        :param file_ext: String to append to the output file name
+        """
+        if not self.all_constraints:
+            return
+        try:
+            dat = np.loadtxt(self.constraint_samples_file)
+        except (OSError, ValueError):
+            return
+        if dat.ndim < 2 or dat.shape[0] == 0:
+            return
+        n_samples = dat.shape[0]
+        filepath = self.config.config['output_dir'] + '/Results/constraint_satisfaction%s.txt' % file_ext
+        with open(filepath, 'w') as f:
+            f.write('# constraint\tpercent_satisfied\tn_satisfied\tn_total\n')
+            for i, c in enumerate(self.all_constraints):
+                n_satisfied = int(np.sum(dat[:, i]))
+                pct = 100.0 * n_satisfied / n_samples
+                label = c.source_line or 'constraint_%i' % i
+                f.write('%s\t%.1f%%\t%i\t%i\n' % (label, pct, n_satisfied, n_samples))
 
     def update_histograms(self, file_ext):
         """
@@ -2258,6 +2312,7 @@ class BayesianAlgorithm(Algorithm):
                 and max_rhat <= self.rhat_threshold):
             print1('R-hat converged (%.4f <= %.4f). Stopping.' % (max_rhat, self.rhat_threshold))
             self.update_histograms('_final')
+            self.report_constraint_satisfaction('_final')
             return True
         return False
 
@@ -2285,6 +2340,7 @@ class BayesianAlgorithm(Algorithm):
         Save the histograms in addition to the usual algorithm cleanup"""
         super().cleanup()
         self.update_histograms('_end')
+        self.report_constraint_satisfaction('_end')
 
 
 class DreamAlgorithm(BayesianAlgorithm):
@@ -2493,6 +2549,7 @@ class DreamAlgorithm(BayesianAlgorithm):
             self.current_pset[index] = pset
             self.ln_current_P[index] = lnposterior
             self.acceptances[index] += 1
+            self.evaluate_constraints(res.simdata, index)
 
         # Store chain history (after accept/reject, so it reflects the kept state)
         self.chain_history[index].append(self._param_vec(self.current_pset[index]))
@@ -2514,18 +2571,22 @@ class DreamAlgorithm(BayesianAlgorithm):
 
         # Update histograms and trajectories if necessary
         if self.iteration[index] % self.sample_every == 0 and self.iteration[index] > self.burn_in:
-            self.sample_pset(self.current_pset[index], self.ln_current_P[index])
+            self.sample_pset(self.current_pset[index], self.ln_current_P[index], index)
         if (self.iteration[index] % (self.sample_every * self.output_hist_every) == 0
             and self.iteration[index] > self.burn_in):
             self.update_histograms('_%i' % self.iteration[index])
 
         # Wait for entire generation to finish
-        if np.all(self.wait_for_sync):
+        # Loop handles the case where all proposals are out of bounds: advance
+        # the generation counter and try again instead of returning an empty
+        # list (which would exhaust the job pool and silently end the run).
+        while np.all(self.wait_for_sync):
 
             self.wait_for_sync = [False] * self.num_parallel
 
             if min(self.iteration) >= self.max_iterations:
                 self.update_histograms('_final')
+                self.report_constraint_satisfaction('_final')
                 return 'STOP'
 
             if self.iteration[index] % 10 == 0:
@@ -2536,7 +2597,7 @@ class DreamAlgorithm(BayesianAlgorithm):
                     return 'STOP'
             else:
                 print2('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
-            logger.info('Completed %i iterations' % self.iteration[index])
+            logger.debug('Completed %i iterations' % self.iteration[index])
             print2('Current -Ln Posteriors: %s' % str(self.ln_current_P))
 
             # Outlier detection (every 10 iterations, only during burn-in)
@@ -2551,17 +2612,17 @@ class DreamAlgorithm(BayesianAlgorithm):
                     mean_dist = self.cr_total_distance / np.maximum(self.cr_usage_count, 1)
                 if np.sum(mean_dist) > 0:
                     self.cr_probs = mean_dist / np.sum(mean_dist)
-                    logger.info('Updated CR probabilities: %s' % str(self.cr_probs))
+                    logger.debug('Updated CR probabilities: %s' % str(self.cr_probs))
             elif self.iteration[index] > self.cr_adapt_end and not self.cr_frozen:
                 self.cr_frozen = True
-                logger.info('CR probabilities frozen at iteration %d: %s'
+                logger.debug('CR probabilities frozen at iteration %d: %s'
                             % (self.iteration[index], str(self.cr_probs)))
 
             # Grow the ZS archive: every K generations, append current chain states
             if self.iteration[index] % self.archive_thin_rate == 0:
                 for i in range(self.num_parallel):
                     self.archive.append(copy.deepcopy(self.current_pset[i]))
-                logger.info('Archive grown to %d entries at iteration %d'
+                logger.debug('Archive grown to %d entries at iteration %d'
                             % (len(self.archive), self.iteration[index]))
 
             # Save old states and compute population std for CR adaptation
@@ -2586,10 +2647,23 @@ class DreamAlgorithm(BayesianAlgorithm):
                     new_pset.name = 'iter%irun%i' % (self.iteration[i], i)
                     next_gen.append(new_pset)
                 else:
-                    #  If new PSet is outside of variable bounds, keep current PSet and wait for next generation
-                    logger.debug('Proposed PSet %s is invalid.  Rejecting and waiting until next iteration' % i)
+                    # Out-of-bounds proposal: treat as a Metropolis rejection.
+                    # Record the current state in chain history (chain stays in place)
+                    # so that diagnostics (R-hat, ESS) correctly reflect the non-movement.
+                    logger.debug('Proposed PSet for chain %d is out of bounds. Treating as rejection.' % i)
+                    self.chain_history[i].append(self._param_vec(self.current_pset[i]))
+                    self.ln_posterior_history[i].append(self.ln_current_P[i])
                     self.wait_for_sync[i] = True
                     self.iteration[i] += 1
+                    self.acceptance_rates[i] = self.acceptances[i] / self.iteration[i]
+                    if self.iteration[i] % self.sample_every == 0 and self.iteration[i] > self.burn_in:
+                        self.sample_pset(self.current_pset[i], self.ln_current_P[i], i)
+
+            if not next_gen:
+                logger.warning('All %d proposals were out of bounds at iteration %d. '
+                               'Advancing to next generation.'
+                               % (self.num_parallel, min(self.iteration)))
+                continue
 
             return next_gen
 
@@ -2654,9 +2728,9 @@ class DreamAlgorithm(BayesianAlgorithm):
         return PSet(new_vars), cr_idx
 
 
-class DreamZSPAlgorithm(DreamAlgorithm):
+class PDreamAlgorithm(DreamAlgorithm):
     """
-    DREAM(ZSP): Preconditioned DREAM with ZS archive.
+    P-DREAM: Preconditioned DREAM.
 
     Extends DREAM(ZS) by computing DE proposals in a covariance-whitened parameter space.
     An online covariance estimate C is learned from the chain history (as in Adaptive Metropolis).
@@ -2672,7 +2746,7 @@ class DreamZSPAlgorithm(DreamAlgorithm):
     """
 
     def __init__(self, config):
-        super(DreamZSPAlgorithm, self).__init__(config)
+        super(PDreamAlgorithm, self).__init__(config)
         pa = config.config['precondition_adapt']
         self.precondition_adapt = pa if pa is not None else self.burn_in // 2
         self._cov_L = None       # Cholesky factor of the covariance estimate
@@ -2707,13 +2781,13 @@ class DreamZSPAlgorithm(DreamAlgorithm):
             self._cov_L_inv = np.linalg.solve(L, np.eye(d))
             if not self._preconditioned:
                 self._preconditioned = True
-                logger.info('DREAM(ZSP): preconditioning activated at iteration %d '
+                logger.info('P-DREAM: preconditioning activated at iteration %d '
                             'with %d pooled samples (d=%d)'
                             % (min(self.iteration), n, d))
             else:
-                logger.debug('DREAM(ZSP): covariance updated with %d samples' % n)
+                logger.debug('P-DREAM: covariance updated with %d samples' % n)
         except np.linalg.LinAlgError:
-            logger.warning('DREAM(ZSP): Cholesky decomposition failed, '
+            logger.warning('P-DREAM: Cholesky decomposition failed, '
                            'skipping covariance update')
 
     def _whiten(self, x_vec):
@@ -2726,7 +2800,7 @@ class DreamZSPAlgorithm(DreamAlgorithm):
 
     def got_result(self, res):
         """Override to update covariance estimate after each generation sync."""
-        result = super(DreamZSPAlgorithm, self).got_result(res)
+        result = super(PDreamAlgorithm, self).got_result(res)
 
         # After a full generation sync with new proposals, update the covariance
         if isinstance(result, list) and len(result) > 0:
@@ -2750,7 +2824,7 @@ class DreamZSPAlgorithm(DreamAlgorithm):
         Before preconditioning activates, falls back to standard DREAM proposals.
         """
         if not self._preconditioned:
-            return super(DreamZSPAlgorithm, self).calculate_new_pset(idx)
+            return super(PDreamAlgorithm, self).calculate_new_pset(idx)
 
         x0 = self.current_pset[idx]
         x0_vec = self._param_vec(x0)
@@ -2818,9 +2892,9 @@ class DreamZSPAlgorithm(DreamAlgorithm):
         return PSet(new_vars), cr_idx
 
 
-class ScreamAlgorithm(DreamAlgorithm):
+class SCreamAlgorithm(DreamAlgorithm):
     """
-    SCREAM: Scatter-search Crossover-based Recombination, Evolution, and Adaptive Metropolis.
+    S-CREAM: Scatter-search Covariance-Rotated Evolutionary Adaptive MCMC.
 
     Replaces DREAM's indiscriminate ZS archive with a scatter-search-inspired curated reference set
     that balances quality (high posterior density) and diversity (geometric spread in parameter space).
@@ -2831,7 +2905,7 @@ class ScreamAlgorithm(DreamAlgorithm):
     """
 
     def __init__(self, config):
-        super(ScreamAlgorithm, self).__init__(config)
+        super(SCreamAlgorithm, self).__init__(config)
         rs = config.config['refset_size']
         self.refset_size = rs if rs is not None else max(2 * self.num_parallel, 10 * self.n_dim)
         self.refset_quality_fraction = config.config['refset_quality_fraction']
@@ -2847,7 +2921,7 @@ class ScreamAlgorithm(DreamAlgorithm):
             self.pool.append((pset, -np.inf))  # unknown posterior
         # Initial reference set = entire pool (before we have posterior info)
         self.archive = [p for p, _ in self.pool]
-        logger.info('SCREAM: initialized pool with %d entries (d=%d)' % (len(self.pool), self.n_dim))
+        logger.info('S-CREAM: initialized pool with %d entries (d=%d)' % (len(self.pool), self.n_dim))
         return first_psets
 
     def _build_refset(self):
@@ -2905,7 +2979,7 @@ class ScreamAlgorithm(DreamAlgorithm):
         self.refset = selected
         self.archive = self.refset  # DreamAlgorithm draws donors from self.archive
         self.refset_built = True
-        logger.info('SCREAM: rebuilt reference set (%d quality + %d diversity) from pool of %d'
+        logger.debug('S-CREAM: rebuilt reference set (%d quality + %d diversity) from pool of %d'
                      % (b1, len(self.refset) - b1, len(self.pool)))
 
     def got_result(self, res):
@@ -2925,7 +2999,7 @@ class ScreamAlgorithm(DreamAlgorithm):
         self.pool.append((pset, lnposterior))
 
         # Delegate to DreamAlgorithm.got_result for MH acceptance etc.
-        result = super(ScreamAlgorithm, self).got_result(res)
+        result = super(SCreamAlgorithm, self).got_result(res)
 
         # After a full generation sync, rebuild the reference set.
         # Must rebuild every sync to counteract the parent's archive append.
@@ -3051,6 +3125,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
             self.accepted += 1
             self.current_pset[index] = pset
             self.ln_current_P[index] = lnposterior
+            self.evaluate_constraints(res.simdata, index)
             # For simulated annealing, reduce the temperature if this was an unfavorable move.
             if self.sa and ln_p_accept < 0.:
                 self.betas[index] += self.cooling
@@ -3084,6 +3159,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
                 print0('Overall move accept rate: %f' % (self.accepted/self.attempts))
                 if not self.sa:
                     self.update_histograms('_final')
+                    self.report_constraint_satisfaction('_final')
                 return 'STOP'
             else:
                 return []
@@ -3128,7 +3204,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
             if not self.sa:
                 if self.iteration[index] > self.burn_in and self.iteration[index] % self.sample_every == 0 \
                         and self.should_sample(index):
-                    self.sample_pset(self.current_pset[index], self.ln_current_P[index])
+                    self.sample_pset(self.current_pset[index], self.ln_current_P[index], index)
                 if (self.iteration[index] > self.burn_in
                    and self.iteration[index] % (self.output_hist_every * self.sample_every) == 0
                    and self.iteration[index] == min(self.iteration)):
@@ -3150,10 +3226,10 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
                             return None
                 else:
                     print2('Completed iteration %i of %i' % (self.iteration[index], self.max_iterations))
-                logger.info('Completed %i iterations' % self.iteration[index])
-                logger.info('Current move accept rate: %f' % (self.accepted/self.attempts))
+                logger.debug('Completed %i iterations' % self.iteration[index])
+                logger.debug('Current move accept rate: %f' % (self.accepted/self.attempts))
                 if self.exchange_attempts > 0:
-                    logger.info('Current replica exchange rate: %f' % (self.exchange_accepted / self.exchange_attempts))
+                    logger.debug('Current replica exchange rate: %f' % (self.exchange_accepted / self.exchange_attempts))
                 if self.sa:
                     logger.debug('Current betas: ' + str(self.betas))
                 print2('Current -Ln Likelihoods: ' + str(self.ln_current_P))
@@ -3209,7 +3285,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
         Then proposes n new parameter sets to resume all chains after the exchange.
         :return: List of n PSets to run
         """
-        logger.info('Performing replica exchange on iteration %i' % self.iteration[0])
+        logger.debug('Performing replica exchange on iteration %i' % self.iteration[0])
         # Who exchanges with whom is a little complicated. Each replica tries one exchange with a replica at the next
         # beta. But if we have multiple reps per beta, then the exchanges aren't necessarily within the same group of
         # reps. We use this random permutation to determine which groups exchange.
@@ -3264,6 +3340,7 @@ class BasicBayesMCMCAlgorithm(BayesianAlgorithm):
         Save the histograms in addition to the usual algorithm cleanup"""
         super().cleanup()
         self.update_histograms('_end')
+        self.report_constraint_satisfaction('_end')
 
     def add_iterations(self, n):
         oldmax = self.max_iterations
@@ -3353,6 +3430,15 @@ class Adaptive_MCMC(BayesianAlgorithm):
                         self.output_run_noise_MLE[k + i] = np.zeros((self.num_parallel, 1, self.time[k]+1))
                         self.output_run_noise_all[k + i] = np.zeros((self.num_parallel, 1, self.time[k]+1))
         if self.config.config['continue_run'] == 1:
+            adaptive_dir = self.config.config['output_dir'] + '/adaptive_files'
+            required = ['diff.txt', 'MLE_params.txt', 'diffMatrix.txt']
+            missing = [f for f in required if not os.path.exists(os.path.join(adaptive_dir, f))]
+            if missing:
+                raise PybnfError(
+                    'continue_run = 1 requires adaptive files from a completed prior run, '
+                    'but the following files are missing from %s: %s. '
+                    'Run the model first without continue_run, or check that output_dir '
+                    'points to a previous run\'s output.' % (adaptive_dir, ', '.join(missing)))
             self.diff = [self.step_size] * self.num_parallel
             self.diff_best = np.loadtxt(self.config.config['output_dir'] + '/adaptive_files/diff.txt')
             self.diffMatrix = np.zeros((self.num_parallel, len(self.variables), len(self.variables))) 
@@ -3432,6 +3518,7 @@ class Adaptive_MCMC(BayesianAlgorithm):
         if self.accept == True:
             self.current_pset[index] = pset
             self.acceptances += 1
+            self.evaluate_constraints(res.simdata, index)
             self.list_trajactory = []      
             self.cp = []
             for i in self.current_pset[index]:
@@ -3525,7 +3612,7 @@ class Adaptive_MCMC(BayesianAlgorithm):
         # Standard BayesianAlgorithm sampling
         if (self.iteration[index] > self.burn_in
                 and self.iteration[index] % self.sample_every == 0):
-            self.sample_pset(self.current_pset[index], self.ln_current_P[index])
+            self.sample_pset(self.current_pset[index], self.ln_current_P[index], index)
         if (self.iteration[index] > self.burn_in
                 and self.iteration[index] % (self.sample_every * self.output_hist_every) == 0):
             self.update_histograms('_%i' % self.iteration[index])
@@ -3576,6 +3663,7 @@ class Adaptive_MCMC(BayesianAlgorithm):
                 self.combine_chains_params()
                 self.combine_chains_traj()
                 self.samples_file = self.config.config['output_dir'] + '/Results/A_MCMC/Runs/combined_params.txt'
+                self.report_constraint_satisfaction('_final')
                 return 'STOP'
             # Check if it's time to report stuff
             if self.iteration[index] % 10 == 0:
@@ -3824,7 +3912,7 @@ class SimplexAlgorithm(Algorithm):
             else:
                 self.start_steps[v.name] = self.config.config['simplex_step']
 
-        self.parallel_count = min(self.config.config['population_size'], len(self.variables))
+        self.parallel_count = min(self.config.config['population_size'], max(len(self.variables) - 1, 1))
         self.iteration = 0
         self.alpha = self.config.config['simplex_reflection']
         self.gamma = self.config.config['simplex_expansion']
@@ -4032,6 +4120,7 @@ class SimplexAlgorithm(Algorithm):
             # Set up the next iteration
             # Re-sort the simplex based on the updated objectives
             self.simplex = sorted(self.simplex, key=lambda x: x[0])
+            self._check_degeneracy()
             if self.iteration == self.max_iterations:
                 return 'STOP' # Extra catch if finish on a rebuild the simplex iteration
             # Find the reflection point for the n worst points
@@ -4090,6 +4179,55 @@ class SimplexAlgorithm(Algorithm):
             else:
                 sums[p.name] = sum(np.log10(point[1][p.name]) for point in self.simplex)
         return sums
+
+    def _check_degeneracy(self):
+        """
+        Check if the simplex has become degenerate (near-zero volume) and perturb vertices if so.
+        Uses the determinant of the edge matrix to measure simplex volume.
+        """
+        if len(self.simplex) < 3:
+            return
+        n = len(self.variables)
+        # Build edge matrix: rows are (vertex_i - vertex_0) for i=1..n, in the appropriate space
+        v0 = self.simplex[0][1]
+        edge_matrix = np.zeros((len(self.simplex) - 1, n))
+        for i in range(1, len(self.simplex)):
+            for j, v in enumerate(self.variables):
+                if v.log_space:
+                    edge_matrix[i - 1, j] = np.log10(self.simplex[i][1][v.name]) - np.log10(v0[v.name])
+                else:
+                    edge_matrix[i - 1, j] = self.simplex[i][1][v.name] - v0[v.name]
+
+        # Compute a scale factor from the edge lengths to make the threshold relative
+        edge_norms = np.linalg.norm(edge_matrix, axis=1)
+        scale = np.mean(edge_norms) if np.mean(edge_norms) > 0 else 1.0
+
+        # For a square matrix, volume ~ |det|. Check if it's near-zero relative to scale.
+        if edge_matrix.shape[0] == edge_matrix.shape[1]:
+            vol = abs(np.linalg.det(edge_matrix))
+            threshold = (1e-10 * scale) ** n
+        else:
+            # Non-square: use product of singular values as a volume proxy
+            sv = np.linalg.svd(edge_matrix, compute_uv=False)
+            vol = np.prod(sv)
+            threshold = (1e-10 * scale) ** min(edge_matrix.shape)
+
+        if vol < threshold:
+            logger.warning('Simplex is nearly degenerate (volume=%.2e). Perturbing vertices.' % vol)
+            for i in range(1, len(self.simplex)):
+                old_pset = self.simplex[i][1]
+                new_vars = []
+                for v in self.variables:
+                    if v.log_space:
+                        log_val = np.log10(old_pset[v.name])
+                        perturbed = 10 ** (log_val + np.random.normal(0, 0.01 * scale))
+                    else:
+                        perturbed = old_pset[v.name] + np.random.normal(0, 0.01 * scale)
+                    perturbed = max(v.lower_bound, min(v.upper_bound, perturbed))
+                    new_vars.append(v.set_value(perturbed))
+                new_pset = PSet(new_vars)
+                new_pset.name = old_pset.name
+                self.simplex[i] = (self.simplex[i][0], new_pset)
 
     def a_plus_b_times_c_minus_d(self, a, b, c, d, v):
         """

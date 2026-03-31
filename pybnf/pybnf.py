@@ -21,7 +21,7 @@ import traceback
 import pickle
 
 
-__version__ = "1.2.2"
+__version__ = "1.3.0"
 
 
 def main():
@@ -210,14 +210,14 @@ def main():
                 alg = algs.AsynchronousDifferentialEvolution(config)
             elif config.config['fit_type'] == 'dream':
                 alg = algs.DreamAlgorithm(config)
-            elif config.config['fit_type'] == 'dream_zsp':
-                alg = algs.DreamZSPAlgorithm(config)
-            elif config.config['fit_type'] == 'scream':
-                alg = algs.ScreamAlgorithm(config)
+            elif config.config['fit_type'] == 'p_dream':
+                alg = algs.PDreamAlgorithm(config)
+            elif config.config['fit_type'] == 's_cream':
+                alg = algs.SCreamAlgorithm(config)
             elif config.config['fit_type'] == 'check':
                 alg = algs.ModelCheck(config)
             else:
-                raise PybnfError('Invalid fit_type %s. Options are: pso, de, ade, ss, mh, pt, sa, sim, am, dream, dream_zsp, scream, check' % config.config['fit_type'])
+                raise PybnfError('Invalid fit_type %s. Options are: pso, de, ade, ss, mh, pt, sa, sim, am, dream, p_dream, s_cream, check' % config.config['fit_type'])
 
         # Override configuration values if provided on command line
         if cmdline_args.cluster_type:
@@ -247,6 +247,7 @@ def main():
                 print1("Refining the best fit by the Simplex algorithm")
                 config.config['simplex_start_point'] = alg.trajectory.best_fit()
                 simplex = algs.SimplexAlgorithm(config, refine=True)
+                simplex.model_list = alg.model_list  # Reuse already-generated networks
                 simplex.trajectory = alg.trajectory  # Reuse existing trajectory; don't start a new one.
                 simplex.run(cluster.client, debug=debug)
 
@@ -321,6 +322,7 @@ def main():
                         print1("Refining the best fit by the Simplex algorithm")
                         config.config['simplex_start_point'] = alg.trajectory.best_fit()
                         simplex = algs.SimplexAlgorithm(config, refine=True)
+                        simplex.model_list = alg.model_list  # Reuse already-generated networks
                         simplex.trajectory = alg.trajectory  # Reuse existing trajectory; don't start a new one.
                         simplex.run(cluster.client, debug=debug)
 

@@ -2,7 +2,7 @@
 """
 Benchmark harness for MCMC sampler comparison.
 
-Runs each sampler (am, dream, scream) N times on a given analytical target,
+Runs each sampler (am, dream, s_cream) N times on a given analytical target,
 collects convergence diagnostics, and produces comparison tables and plots.
 
 Usage:
@@ -22,7 +22,7 @@ import time
 
 import numpy as np
 
-SAMPLERS = ['am', 'dream', 'dream_zsp', 'scream']
+SAMPLERS = ['am', 'dream', 'p_dream', 's_cream']
 
 
 # ---------------------------------------------------------------------------
@@ -91,8 +91,22 @@ def run_sampler(bench_dir, sampler, replicate, parallel=None, overrides=None,
     print('  %s rep %d ...' % (sampler, replicate), end=' ', flush=True)
     elapsed, success = run_single(conf_patched, cwd=bench_dir, parallel=parallel,
                                    timeout=timeout)
+
+    # Validate that the run actually produced samples (guards against silent
+    # early termination, e.g. job pool exhaustion from all-out-of-bounds proposals)
     if success:
-        print('%.1fs' % elapsed)
+        samples_file = os.path.join(run_output_dir, 'output', 'Results', 'samples.txt')
+        if os.path.isfile(samples_file):
+            with open(samples_file) as f:
+                n_lines = sum(1 for _ in f)
+            if n_lines <= 1:  # header only, no data
+                print('EMPTY (no samples produced in %.1fs)' % elapsed)
+                success = False
+            else:
+                print('%.1fs' % elapsed)
+        else:
+            print('EMPTY (no samples.txt in %.1fs)' % elapsed)
+            success = False
     return {'sampler': sampler, 'replicate': replicate, 'wall_clock': elapsed,
             'success': success, 'output_dir': run_output_dir + '/output'}
 
@@ -324,7 +338,7 @@ def plot_convergence(all_metrics, output_path):
         print('No trajectory data available for plotting')
         return
 
-    colors = {'am': '#1f77b4', 'dream': '#ff7f0e', 'dream_zsp': '#d62728', 'scream': '#2ca02c'}
+    colors = {'am': '#1f77b4', 'dream': '#ff7f0e', 'p_dream': '#d62728', 's_cream': '#2ca02c'}
 
     fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
@@ -402,7 +416,7 @@ def main():
     parser.add_argument('--parallel', '-p', type=int, default=None,
                         help='Number of parallel workers for PyBNF')
     parser.add_argument('--samplers', '-s', nargs='+', default=SAMPLERS,
-                        help='Which samplers to run (default: am dream scream)')
+                        help='Which samplers to run (default: am dream s_cream)')
     parser.add_argument('--max-iterations', type=int, default=None,
                         help='Override max_iterations in all configs')
     parser.add_argument('--burn-in', type=int, default=None,
@@ -434,12 +448,21 @@ def main():
     if args.burn_in is not None:
         overrides['burn_in'] = args.burn_in
 
-    # Run all replicates
+    # Run all replicates (retry failed runs up to max_retries times)
+    max_retries = 3
     run_results = []
     for sampler in args.samplers:
         for rep in range(args.replicates):
-            result = run_sampler(bench_dir, sampler, rep, args.parallel,
-                                 overrides=overrides, timeout=args.timeout)
+            for attempt in range(1, max_retries + 1):
+                result = run_sampler(bench_dir, sampler, rep, args.parallel,
+                                     overrides=overrides, timeout=args.timeout)
+                if result is None:
+                    break  # missing .conf, no point retrying
+                if result.get('success'):
+                    break
+                if attempt < max_retries:
+                    print('  %s rep %d failed (attempt %d/%d), retrying...'
+                          % (sampler, rep, attempt, max_retries))
             if result is not None:
                 run_results.append(result)
 

@@ -54,6 +54,10 @@ def init_logging(file_prefix, debug=False, log_level_name='info'):
     root.setLevel(10)
     root.addHandler(fh)
 
+    # Route Python warnings (numpy RuntimeWarning, YAMLLoadWarning, etc.) through
+    # the logging system so they go to the log file instead of spamming the terminal.
+    logging.captureWarnings(True)
+
     dlog = logging.getLogger('distributed')
     dlog.handlers[:] = []  # remove any existing handlers
     dlog.setLevel(max(logging.WARNING, log_level))
@@ -124,7 +128,7 @@ class Configuration(object):
             d = self.check_unused_keys_model_checking(d)
         elif verbosity >= 1:
             self.check_unused_keys(d)
-        if d['fit_type'] in ('mh', 'pt', 'sa', 'dream', 'dream_zsp', 'scream', 'am'):
+        if d['fit_type'] in ('mh', 'pt', 'sa', 'dream', 'p_dream', 's_cream', 'am'):
             self.postprocess_mcmc_keys(d)
         self.config = self.default_config()
         for k, v in d.items():
@@ -188,6 +192,7 @@ class Configuration(object):
             'simplex_step': 1.0, 'simplex_reflection': 1.0, 'simplex_expansion':1.0, 'simplex_contraction': 0.5,
             'simplex_shrink': 0.5, 'simplex_stop_tol': 0.,
 
+            'max_failed_simulations': 100,
             'wall_time_gen': 3600,
             'wall_time_sim': None,  # Chosen when loading models
             'normalization': None,
@@ -241,7 +246,7 @@ class Configuration(object):
                         }
         ignored_params = set()
         thisalg = conf_dict['fit_type']
-        if thisalg in ('pt', 'sa', 'dream', 'dream_zsp', 'scream', 'am'):
+        if thisalg in ('pt', 'sa', 'dream', 'p_dream', 's_cream', 'am'):
             thisalg = 'mh'
         for alg in alg_specific:
             if (thisalg != alg
@@ -764,8 +769,15 @@ class Configuration(object):
                                          "Invalid normalization type '%s'. Options are: init, peak, zero, unit" %
                                          self.config['normalization'][ef] + seedoc)
                 if type(val) == str:
-                    # This exp file has a single normalization type for all columns
+                    # This exp file has a single normalization type for all columns.
+                    # Convert to column-specific form using only the columns present in the .exp file,
+                    # so that simulation columns used only by .prop constraints are not normalized.
                     checkval(val)
+                    exp_cols = [c for c in self.exp_data[m][suff].cols
+                                if self.exp_data[m][suff].cols[c] != 0 and not c.endswith('_SD')]
+                    if not exp_cols:
+                        continue
+                    val = [(val, exp_cols)]
                 else:
                     # This exp file has a list of one or more pairs specifying (normalization_type, [columns])
                     for (i, (ntype, cols)) in enumerate(val):
@@ -809,6 +821,17 @@ class Configuration(object):
                 raise PybnfError("Invalid normalization type '%s'" % self.config['normalization'],
                                  "Invalid normalization type '%s'. Options are: init, peak, zero, unit" %
                                  self.config['normalization'] + seedoc)
+            # Convert global normalization to column-specific form for each exp file,
+            # so that simulation columns used only by .prop constraints are not normalized.
+            ntype = self.config['normalization']
+            newdict = dict()
+            for m in self.exp_data:
+                for suff in self.exp_data[m]:
+                    exp_cols = [c for c in self.exp_data[m][suff].cols
+                                if self.exp_data[m][suff].cols[c] != 0 and not c.endswith('_SD')]
+                    if exp_cols:
+                        newdict[suff] = [(ntype, exp_cols)]
+            self.config['normalization'] = newdict
 
     def _load_postprocessing(self):
         """

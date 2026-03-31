@@ -38,7 +38,7 @@ class AnalyticalModel(Model):
         self.has_observables = True
         self.param_names = set()  # All params come from the config, not the model file
 
-        with open(target_file) as f:
+        with open(target_file, encoding='utf-8') as f:
             self.target_def = json.load(f)
 
         self.target_type = self.target_def['type']

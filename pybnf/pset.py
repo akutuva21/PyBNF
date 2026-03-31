@@ -14,11 +14,11 @@ import heapq
 import traceback
 import roadrunner as rr
 import pickle
-from os.path import abspath, dirname, join, isfile
+from os.path import join
 import os
+import tempfile
 from sys import executable
 
-ROOT_DIRECTORY = join(dirname(abspath(__file__)), '..')
 rr.Logger.disableLogging()
 
 logger = logging.getLogger(__name__)
@@ -148,7 +148,7 @@ class BNGLModel(Model):
         self.bng_command = ''
 
         # Read the file
-        with open(self.file_path) as file:
+        with open(self.file_path, encoding='utf-8', errors='replace') as file:
             self.bngl_file_text = file.read()
 
         # Scan the file's lines
@@ -530,7 +530,7 @@ class NetModel(BNGLModel):
             self.netfile_lines = ls
         else:
             self.file_name = nf
-            with open(self.file_name) as f:
+            with open(self.file_name, encoding='utf-8', errors='replace') as f:
                 self.netfile_lines = f.readlines()
 
     def copy_with_param_set(self, pset):
@@ -605,6 +605,11 @@ class SbmlModelNoTimeout(Model):
 
         self.species_names = set(runner.model.getFloatingSpeciesIds()).union(set(runner.model.getBoundarySpeciesIds()))
         self.param_names = self.species_names.union(set(runner.model.getGlobalParameterIds()))
+
+        # Save compiled RoadRunner state to a temp file to avoid re-parsing XML on every execute() call
+        self._state_file = tempfile.NamedTemporaryFile(suffix='.rr', delete=False).name
+        runner.saveState(self._state_file)
+
         logger.debug('Loaded model %s with Roadrunner' % self.name)
 
     def copy_with_param_set(self, pset):
@@ -613,6 +618,12 @@ class SbmlModelNoTimeout(Model):
         newmodel.param_set = pset
         return newmodel
 
+    def _load_runner(self):
+        """Load a RoadRunner instance from the saved state file, avoiding slow XML re-parsing."""
+        runner = rr.RoadRunner()
+        runner.loadState(self._state_file)
+        return runner
+
     def model_text(self, mut=None):
         """
         Generates the XML text of the model, optionally applying the MutationSet mut
@@ -620,7 +631,7 @@ class SbmlModelNoTimeout(Model):
         :return:
         """
         logger.info('Generating model text for %s' % self.name)
-        runner = rr.RoadRunner(self.abs_file_path)
+        runner = self._load_runner()
         self._modify_params(runner)
         if mut:
             self._apply_mutant(mut, runner)
@@ -684,8 +695,7 @@ class SbmlModelNoTimeout(Model):
                 setattr(runner, mi.name, mi.undo())
 
     def execute(self, folder, filename, timeout):
-        # Load the original xml file with Roadrunner
-        runner = rr.RoadRunner(self.abs_file_path)
+        runner = self._load_runner()
 
         # Do parameter modifications
         self._modify_params(runner)
@@ -769,19 +779,12 @@ class SbmlModelNoTimeout(Model):
 
 class SbmlModel(SbmlModelNoTimeout):
 
-    def __init__(self, file, abs_file, pset=None, actions=(), save_files=False, integrator='cvode'):
-        super(SbmlModel, self).__init__(file, abs_file, pset, actions, save_files, integrator)
-        if not isfile(ROOT_DIRECTORY + '/sbml_runner.py'):
-            raise PybnfError('The "wall_time_sim" option for SBML models does not work if PyBNF was installed through '
-                             'PyPI (pip install pybnf). If you need this option, please install from the source code '
-                             'on GitHub.')
-
     def execute(self, folder, filename, timeout):
         self.curr_folder = folder
         self.curr_file = filename
         arg = pickle.dumps(self)
         with open('%s/%s.log' % (folder, filename), 'w') as errout:
-            stdout_data = run_subprocess([executable, ROOT_DIRECTORY + '/sbml_runner.py'],
+            stdout_data = run_subprocess([executable, '-m', 'pybnf.sbml_runner'],
                                          timeout=timeout, stdout=PIPE, stderr=errout, input=arg)
         result = pickle.loads(stdout_data)
         return result
@@ -1412,7 +1415,7 @@ class Trajectory(object):
         """Loads a Trajectory from file given Algorithm.variables information"""
 
         logger.info('Loading trajectory from %s' % filename)
-        with open(filename) as f:
+        with open(filename, encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
         if len(lines) == 0:
             raise IOError('Empty parameters file %s' % filename)

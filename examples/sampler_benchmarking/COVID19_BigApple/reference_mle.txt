@@ -1,0 +1,15 @@
+# Reference MLE from archived AM run (examples/COVID19forecasting_aMCMC/BigApple)
+# Settings: population_size=10, 110k iterations, adaptive=5000, warm start
+# These values serve as a sanity check — new runs should converge to a similar region.
+#
+# Parameter          MLE
+t0                  32.832
+t_delta              0.07268
+t_delta2           110.22
+beta                 2.0334
+lambda0              0.09830
+p0                   0.8725
+lambda1              5.1810
+p1                   0.7362
+fD                   0.1145
+r                   10.266

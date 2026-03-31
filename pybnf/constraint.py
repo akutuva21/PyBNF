@@ -190,6 +190,7 @@ class ConstraintSet:
                                          minpenalty, pmin, pmax, tolerance)
                 else:
                     raise RuntimeError('Unknown enforcement keyword %s' % p.enforce[0])
+                con.source_line = line.strip()
                 self.constraints.append(con)
         logger.info('Loaded %i constraints' % len(self.constraints))
 
@@ -278,6 +279,7 @@ class Constraint:
 
         self.base_model = base_model
         self.base_suffix = base_suffix
+        self.source_line = ''  # Original text from .prop file, set during parsing
 
         self.weight = weight
         self.min_penalty = minpenalty
