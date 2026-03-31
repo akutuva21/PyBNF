@@ -132,6 +132,21 @@ def _list_example_configs():
     return sorted(examples, key=lambda x: (x['source'], x['name']))
 
 
+def _normalize_bngpath(raw_bng_path: Optional[str]) -> Optional[str]:
+    """Allow users to provide either BNG directory or direct path to BNG2.pl."""
+    if not raw_bng_path:
+        return raw_bng_path
+
+    cleaned = raw_bng_path.strip().strip('"')
+    if not cleaned:
+        return cleaned
+
+    candidate = Path(cleaned)
+    if candidate.name.lower() == 'bng2.pl':
+        return str(candidate.parent)
+    return cleaned
+
+
 def _pipeline_logger(run_id: str, proc: subprocess.Popen):
     """Collect process output in the RUNS metadata."""
     run_meta = RUNS.get(run_id)
@@ -181,8 +196,12 @@ def _run_subprocess(run_id, config_path, output_dir=None, extra_args=None, base_
         run_meta['last_message'] = 'Config file not found: %s' % config_path
         return
 
-    # Check environment
-    bng_path = os.environ.get('BNGPATH', 'NOT SET')
+    # Check environment and normalize BNGPATH if a full BNG2.pl file path was provided.
+    raw_bng_path = os.environ.get('BNGPATH')
+    normalized_bng_path = _normalize_bngpath(raw_bng_path)
+    bng_path = normalized_bng_path if normalized_bng_path else 'NOT SET'
+    if raw_bng_path and normalized_bng_path and raw_bng_path != normalized_bng_path:
+        LOGGER.info('Normalized BNGPATH from file path to directory: %s', normalized_bng_path)
     LOGGER.info('Launching PyBNF with BNGPATH=%s', bng_path)
 
     # Pre-emptive cleanup of output directory to avoid interactive prompts on Windows
@@ -216,6 +235,8 @@ def _run_subprocess(run_id, config_path, output_dir=None, extra_args=None, base_
     
     env = os.environ.copy()
     env['PYTHONUNBUFFERED'] = '1'
+    if normalized_bng_path:
+        env['BNGPATH'] = normalized_bng_path
     existing_pythonpath = env.get('PYTHONPATH')
     env['PYTHONPATH'] = str(BASE_DIR) if not existing_pythonpath else os.pathsep.join([str(BASE_DIR), existing_pythonpath])
     run_base_dir = _resolve_run_base_dir(base_dir, config_path)
